@@ -1,0 +1,30 @@
+[project]
+name = "project-intel"
+version = "0.1.0"
+description = "Project Intelligence — build an evidence-linked understanding map of an unfamiliar codebase."
+readme = "README.md"
+authors = [
+    { name = "Valentin Famelart", email = "famelartv@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+project-intel = "project_intel:main"
+
+[build-system]
+requires = ["uv_build>=0.12.10,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
