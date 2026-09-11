@@ -4,15 +4,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository state
 
-This repository currently contains **specification documents only** — there is no source code, build system, package manifest, or test suite yet. It is not a git repository. Do not look for or assume the existence of an implementation; the three markdown files here *are* the project so far.
+The repo has two parts: the specs (below) and a Python implementation being built out feature by feature under `src/project_intel/`, following [specs/features/](specs/features/) in order. Implementation is early — do not assume a feature exists just because a later one's spec references it; check `specs/features/README.md` and the actual source tree for what has landed so far.
+
+## Commands
+
+- Install toolchain (pins Python 3.12 + uv via `.mise.toml`): `mise install`
+- Install dependencies: `uv sync`
+- Run the CLI: `uv run project-intel`
+- Run all tests: `uv run pytest`
+- Run a single test: `uv run pytest tests/test_smoke.py::test_main_runs`
+- Lint: `uv run ruff check .`
 
 - [specs/Product Brief & Vision.md](specs/Product Brief & Vision.md) — the pitch, problem statement, use cases, core principles, target outputs, conceptual architecture, and target workflow.
 - [specs/Capability Matrix.md](specs/Capability Matrix.md) — a question-by-question matrix (Discovery, Code Graph, Hotspots, Domain Understanding, Runtime, Infrastructure, CI/CD, Data, Tests, Git Evolution, Observability, Documentation, Anomalies/Risks, Onboarding Path) mapping each question to priority (P0/P1/P2), source, whether it's deterministic/existing-tool/internal/LLM-derived, and its evidence type.
 - [specs/Design Questions.md](specs/Design Questions.md) — ~210 open design questions grouped by topic (A–S: scope/mental model, discovery, adapters, normalized facts, graph, hotspots, architecture interpretation, domain understanding, LLM orchestration, Git, infrastructure, HTML report, MCP, performance, security/privacy, UX/CLI, extensibility, MVP, validation) that need to be resolved before implementation begins. Note the filename typo ("Atlaas") — this is the actual filename on disk, not a mistake to silently "fix" without confirming with the user first.
 
 - [specs/Design Decisions.md](specs/Design Decisions.md) — answers to the ~210 design questions above, section by section, each marked Décidé/Proposition/Ouvert; open items still needing a product decision are listed in its closing summary.
+- [specs/features/](specs/features/) — one implementation spec per feature, in build order, each scoped strictly to points marked **Décidé** in Design Decisions.md (see [specs/features/README.md](specs/features/README.md) for the ordered list and dependency chain).
 
-All documents are written in French.
+The four documents above (Product Brief, Capability Matrix, Design Questions, Design Decisions) are written in French; the `specs/features/` implementation specs are written in English since they sit alongside the (English) codebase.
 
 ## Project concept: "Project Intelligence" (a.k.a. Atlas)
 
@@ -33,4 +43,4 @@ Explicit non-goals: this is not meant to become a general AST analyzer, dependen
 
 ## Working in this repo right now
 
-Since there's no code yet, likely tasks are: refining these specs, answering/resolving the open design questions, or scaffolding an initial implementation. When scaffolding begins, follow the principles above (deterministic-first, evidence-first, existing-tools-first) as the architectural contract, and update this CLAUDE.md with real build/lint/test commands once a toolchain exists.
+Implementation work follows [specs/features/](specs/features/) strictly in order (01 → 13); each feature's spec lists what it depends on, what it must not implement yet (points still **Proposition**/**Ouvert** in Design Decisions.md), and its acceptance criteria. Do not skip ahead or build something two features early just because it seems related — a later feature's spec is the place that resolves what an earlier one deliberately left open. Commit after each feature lands, same as the specs themselves were committed one per feature.
