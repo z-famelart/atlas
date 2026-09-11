@@ -1,0 +1,12 @@
+{
+  "nodes": [
+    {"id": "src/foo.py::MyClass", "kind": "class", "file": "src/foo.py", "name": "MyClass"},
+    {"id": "src/bar.py::helper", "kind": "function", "file": "src/bar.py", "name": "helper"},
+    {"id": "src/baz.rs::baz_fn", "kind": "function", "file": "src/baz.rs", "name": "baz_fn"},
+    {"id": "docs/README.txt::nothing", "kind": "function", "file": "docs/README.txt", "name": "nothing"}
+  ],
+  "edges": [
+    {"source": "src/foo.py", "target": "src/bar.py", "kind": "imports"},
+    {"source": "src/foo.py::MyClass", "target": "src/bar.py::helper", "kind": "calls"}
+  ]
+}
