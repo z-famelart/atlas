@@ -19,3 +19,14 @@ Build (and commit) in this order — each feature depends only on the ones befor
 13. [CLI](13-cli.md) — `project-intel analyze <scope>`, wiring it all together.
 
 Each feature's spec has a fixed shape: Depends on, Goal, Scope (with the exact **Décidé** question numbers it implements), Explicitly out of scope (with the **Proposition**/**Ouvert** questions it deliberately does not resolve), and Acceptance criteria.
+
+## Regeneration contract
+
+These specs are the source of truth, not the code. The implementation must be regenerable from a feature's spec — by a human or an agent, from scratch — without breaking the running app, as long as the spec itself hasn't changed. Every feature spec must be written so that's actually possible:
+
+- **Interfaces are the contract, not an implementation detail.** The types/classes/function signatures a spec lists under "Scope" are what later features and the app depend on. Regenerating a feature's code from its spec must reproduce the same public interface; if a spec doesn't change, its interface shouldn't either, even if the internals do.
+- **Data types are immutable and closed.** Where a spec doesn't call for dynamic/extensible attributes, implement it as a frozen, slotted type (Python: `@dataclass(frozen=True, slots=True)`) — this makes "no attribute drift, no accidental mutation" a language-enforced property of regenerated code, not a convention someone can forget.
+- **Behavior is deterministic.** Anything that returns an ordered result (query methods, list-producing calculations) must have an explicit, spec-mandated ordering — never left to incidental storage/iteration order — so the same inputs always produce byte-identical output across a regeneration.
+- **Tests pin shape, not just behavior.** Prefer snapshot/golden tests that fail on any unintended change to a produced artifact's exact shape (serialized fact, query result, generated file) over tests that only assert "it doesn't crash." A looser test lets an interface silently drift across a regeneration; a snapshot test catches it immediately.
+
+Feature 01 is the first place these rules are applied concretely (frozen+slotted dataclasses, a deterministic `FactStore` interface, snapshot-tested output) — later features should follow the same pattern rather than reinvent it.
