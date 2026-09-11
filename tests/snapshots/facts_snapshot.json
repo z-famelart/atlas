@@ -1,0 +1,39 @@
+{
+  "entity": {
+    "attributes": {
+      "language": "python",
+      "loc": 150
+    },
+    "id": "src/main.py",
+    "repository_id": "repo-snapshot",
+    "type": "File"
+  },
+  "fact": {
+    "confidence": 1.0,
+    "created_at": "2024-06-01T00:00:00+00:00",
+    "evidence": [
+      {
+        "kind": "file",
+        "ref": {
+          "path": "src/main.py",
+          "repository_id": "repo-snapshot"
+        },
+        "retrieved_at": "2024-06-01T00:00:00+00:00",
+        "source_analyzer": "fs-adapter"
+      }
+    ],
+    "id": "snapshot-fact-1",
+    "object": null,
+    "predicate": null,
+    "provenance": "observed",
+    "run_id": "snapshot-run",
+    "schema_version": "1.0",
+    "source_analyzer": "fs-adapter",
+    "subject": {
+      "id": "src/main.py",
+      "type": "File"
+    },
+    "type": "file_exists",
+    "value": null
+  }
+}
