@@ -82,7 +82,7 @@ Proposition. Via la configuration du `Project` : entrées manuelles de type sour
 # C. Existing tools / adapters
 
 **21. Quelle est la liste initiale des outils supportés ?**
-⚠️ **Ouvert — impact architectural.** Dépend du MVP (cf. section R) et n'est pas figée par les documents actuels. Recommandation : un outil par catégorie P0 de la Capability Matrix (langage/LOC, code graph, complexité, Git, un scanner IaC basique) plutôt qu'une couverture large et superficielle.
+Décidé. Un outil par catégorie P0 : **tokei** pour la détection de langages et LOC (binaire Rust, sortie JSON, offline), **graphify** pour l'extraction du graphe de code (imports/calls/symbols, multi-langages), **Git** natif pour l'historique. Complexité et scanners IaC/CI restent optionnels/dégradables au MVP.
 
 **22. Quels outils sont considérés comme obligatoires pour le MVP ?**
 Proposition. Un détecteur de langage/LOC, Git (natif), un outil de code graph (Graphify ou équivalent), un outil de complexité par langage supporté. Tout le reste est optionnel/dégradable.
@@ -655,10 +655,10 @@ Proposition — oui, dans la mesure où Q181-188 impliquent déjà des interface
 Proposition — toutes les lignes P0 de la Capability Matrix, en particulier : Discovery complète, Code Graph (composants/dépendances/appels/centralité/entrypoints), Hotspots avec score explicable, Code Navigation de base, un socle de Domain Understanding et d'Onboarding Path (seules zones LLM P0), rapport HTML avec les sections correspondantes.
 
 **192. Quels outils existants devons-nous intégrer en premier ?**
-Proposition — cf. Q22 : détecteur de langage/LOC, Git, un outil de code graph, un outil de complexité.
+Décidé — tokei (langage/LOC), Git (historique), graphify (code graph). Dans cet ordre de priorité pour le MVP.
 
 **193. Quels langages devons-nous supporter ?**
-⚠️ **Ouvert — impact architectural.** Non spécifié dans les documents actuels ; conditionne le choix de l'outil de code graph/complexité (Q21/Q54). Recommandation : commencer par 1-2 langages bien couverts par l'outil de graph choisi plutôt que viser une large couverture day one.
+Décidé. MVP : **Python, TypeScript/JavaScript, Go, Java/Kotlin, Ruby, Rust**. Critère de sélection : couverture tokei native (LOC) + grammaires graphify disponibles. Extensions futures selon demande utilisateur, sans refonte du modèle.
 
 **194. Quelle taille de projet doit être supportée ?**
 ⚠️ **Ouvert.** Lié à Q155 ; à définir conjointement.
