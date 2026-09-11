@@ -121,6 +121,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "cattrs" },
+    { name = "packaging" },
     { name = "sqlalchemy" },
 ]
 
@@ -133,6 +134,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "cattrs", specifier = ">=26.2.0" },
+    { name = "packaging", specifier = ">=26.3" },
     { name = "sqlalchemy", specifier = ">=2.0.52" },
 ]
 
