@@ -1,0 +1,197 @@
+# Discovery signatures — declarative technology detection table.
+# Each entry maps file-presence patterns to a detected technology.
+# Fields:
+#   category        — "build_system" | "package_manager" | "framework" | "container" | "k8s" | "ci" | "iac"
+#   name            — canonical technology slug
+#   files           — list of glob patterns (matched against repo-relative paths)
+#   manifest_file   — file to open for key-presence check (optional)
+#   manifest_key    — dot-separated key path inside the manifest (optional, requires manifest_file)
+
+# ── Build systems ─────────────────────────────────────────────────────────────
+
+[[signatures]]
+category = "build_system"
+name = "maven"
+files = ["pom.xml"]
+
+[[signatures]]
+category = "build_system"
+name = "gradle"
+files = ["build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"]
+
+[[signatures]]
+category = "build_system"
+name = "make"
+files = ["Makefile", "GNUmakefile"]
+
+[[signatures]]
+category = "build_system"
+name = "cmake"
+files = ["CMakeLists.txt"]
+
+[[signatures]]
+category = "build_system"
+name = "bazel"
+files = ["BUILD", "BUILD.bazel", "WORKSPACE", "WORKSPACE.bazel"]
+
+# ── Package managers ──────────────────────────────────────────────────────────
+
+[[signatures]]
+category = "package_manager"
+name = "npm"
+files = ["package.json", "package-lock.json"]
+
+[[signatures]]
+category = "package_manager"
+name = "yarn"
+files = ["yarn.lock"]
+
+[[signatures]]
+category = "package_manager"
+name = "pnpm"
+files = ["pnpm-lock.yaml"]
+
+[[signatures]]
+category = "package_manager"
+name = "pip"
+files = ["requirements.txt", "requirements*.txt"]
+
+[[signatures]]
+category = "package_manager"
+name = "uv"
+files = ["uv.lock"]
+
+[[signatures]]
+category = "package_manager"
+name = "poetry"
+files = ["poetry.lock"]
+
+[[signatures]]
+category = "package_manager"
+name = "cargo"
+files = ["Cargo.toml", "Cargo.lock"]
+
+[[signatures]]
+category = "package_manager"
+name = "go-modules"
+files = ["go.mod", "go.sum"]
+
+[[signatures]]
+category = "package_manager"
+name = "bundler"
+files = ["Gemfile", "Gemfile.lock"]
+
+[[signatures]]
+category = "package_manager"
+name = "composer"
+files = ["composer.json", "composer.lock"]
+
+# ── Frameworks (manifest_key checks) ─────────────────────────────────────────
+
+[[signatures]]
+category = "framework"
+name = "react"
+manifest_file = "package.json"
+manifest_key = "dependencies.react"
+
+[[signatures]]
+category = "framework"
+name = "vue"
+manifest_file = "package.json"
+manifest_key = "dependencies.vue"
+
+[[signatures]]
+category = "framework"
+name = "next"
+manifest_file = "package.json"
+manifest_key = "dependencies.next"
+
+[[signatures]]
+category = "framework"
+name = "angular"
+manifest_file = "package.json"
+manifest_key = "dependencies.@angular/core"
+
+[[signatures]]
+category = "framework"
+name = "django"
+files = ["manage.py"]
+
+[[signatures]]
+category = "framework"
+name = "flask"
+files = ["wsgi.py", "app.py"]
+
+[[signatures]]
+category = "framework"
+name = "fastapi"
+manifest_file = "pyproject.toml"
+manifest_key = "project.dependencies"
+
+# ── Container ─────────────────────────────────────────────────────────────────
+
+[[signatures]]
+category = "container"
+name = "docker"
+files = ["Dockerfile", "Dockerfile.*", "docker-compose.yml", "docker-compose.yaml", "docker-compose*.yml", "docker-compose*.yaml"]
+
+# ── Kubernetes ────────────────────────────────────────────────────────────────
+
+[[signatures]]
+category = "k8s"
+name = "kubernetes"
+files = ["k8s/*.yaml", "k8s/*.yml", "kubernetes/*.yaml", "kubernetes/*.yml", "deploy/*.yaml", "deploy/*.yml", "helm/*/Chart.yaml"]
+
+# ── CI/CD ─────────────────────────────────────────────────────────────────────
+
+[[signatures]]
+category = "ci"
+name = "github-actions"
+files = [".github/workflows/*.yml", ".github/workflows/*.yaml"]
+
+[[signatures]]
+category = "ci"
+name = "gitlab-ci"
+files = [".gitlab-ci.yml"]
+
+[[signatures]]
+category = "ci"
+name = "circle-ci"
+files = [".circleci/config.yml"]
+
+[[signatures]]
+category = "ci"
+name = "travis-ci"
+files = [".travis.yml"]
+
+[[signatures]]
+category = "ci"
+name = "jenkins"
+files = ["Jenkinsfile"]
+
+[[signatures]]
+category = "ci"
+name = "azure-pipelines"
+files = ["azure-pipelines.yml"]
+
+# ── IaC ───────────────────────────────────────────────────────────────────────
+
+[[signatures]]
+category = "iac"
+name = "terraform"
+files = ["*.tf", "*.tfvars"]
+
+[[signatures]]
+category = "iac"
+name = "pulumi"
+files = ["Pulumi.yaml", "Pulumi.yml"]
+
+[[signatures]]
+category = "iac"
+name = "ansible"
+files = ["playbook.yml", "playbooks/*.yml", "roles/*/tasks/main.yml"]
+
+[[signatures]]
+category = "iac"
+name = "cloudformation"
+files = ["template.yaml", "template.json", "cloudformation/*.yaml", "cloudformation/*.json"]
