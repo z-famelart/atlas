@@ -1,0 +1,42 @@
+{
+  "Python": {
+    "blanks": 50,
+    "code": 300,
+    "comments": 20,
+    "lines": 370,
+    "reports": [
+      {
+        "name": "/repo/src/main.py",
+        "stats": {"blanks": 5, "code": 120, "comments": 8, "lines": 133}
+      },
+      {
+        "name": "/repo/src/utils.py",
+        "stats": {"blanks": 3, "code": 80, "comments": 2, "lines": 85}
+      }
+    ]
+  },
+  "TypeScript": {
+    "blanks": 10,
+    "code": 200,
+    "comments": 5,
+    "lines": 215,
+    "reports": [
+      {
+        "name": "/repo/src/app.ts",
+        "stats": {"blanks": 4, "code": 200, "comments": 5, "lines": 209}
+      }
+    ]
+  },
+  "C++": {
+    "blanks": 2,
+    "code": 50,
+    "comments": 1,
+    "lines": 53,
+    "reports": [
+      {
+        "name": "/repo/vendor/lib.cpp",
+        "stats": {"blanks": 2, "code": 50, "comments": 1, "lines": 53}
+      }
+    ]
+  }
+}
