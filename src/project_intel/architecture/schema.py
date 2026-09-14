@@ -11,12 +11,17 @@ _CATALOGUE = [
     "modular_monolith",
     "event_driven",
     "mvc_mvvm",
+    "big_ball_of_mud",
     "uncatalogued",
 ]
 
 CATALOGUE_DESCRIPTION = (
-    "Allowed pattern values: " + ", ".join(f'"{p}"' for p in _CATALOGUE[:-1]) + ". "
-    'Use "uncatalogued" when none of the above fits and fill pattern_description with a short label.'
+    "Allowed pattern values: " + ", ".join(f'"{p}"' for p in _CATALOGUE) + ". "
+    'Use "big_ball_of_mud" when the graph shows ad-hoc coupling, unclear boundaries, or no consistent structure — '
+    "do NOT force a clean pattern label onto a messy codebase. "
+    'Use "uncatalogued" only for a recognizable pattern not listed above (add pattern_description). '
+    "Return multiple hypotheses (one per pattern observed) when different parts of the codebase follow "
+    "different patterns — do not collapse mixed evidence into one averaged label."
 )
 
 

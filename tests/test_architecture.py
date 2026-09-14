@@ -304,3 +304,24 @@ def test_architecture_stage_in_registry():
 def test_architecture_after_code_graph():
     names = [s.name for s in STAGE_REGISTRY]
     assert names.index("code_graph") < names.index("architecture")
+
+
+# ---------------------------------------------------------------------------
+# Catalogue
+# ---------------------------------------------------------------------------
+
+
+def test_big_ball_of_mud_in_catalogue():
+    from project_intel.architecture.schema import _CATALOGUE
+    assert "big_ball_of_mud" in _CATALOGUE
+    assert "big_ball_of_mud" not in _CATALOGUE[_CATALOGUE.index("big_ball_of_mud") + 1:]  # not duplicated
+
+
+def test_catalogue_description_mentions_big_ball_of_mud():
+    from project_intel.architecture.schema import CATALOGUE_DESCRIPTION
+    assert "big_ball_of_mud" in CATALOGUE_DESCRIPTION
+
+
+def test_catalogue_description_instructs_multi_hypothesis():
+    from project_intel.architecture.schema import CATALOGUE_DESCRIPTION
+    assert "multiple hypotheses" in CATALOGUE_DESCRIPTION
