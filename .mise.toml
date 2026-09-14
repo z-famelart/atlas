@@ -4,3 +4,4 @@ uv = "latest"
 
 [env]
 UV_PROJECT_ENVIRONMENT = ".venv"
+_.path = ["{{config_root}}/.venv/bin"]

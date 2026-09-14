@@ -17,7 +17,7 @@ The repo has two parts: the specs (below) and a Python implementation being buil
 
 - Install toolchain (pins Python 3.12 + uv via `.mise.toml`): `mise install`
 - Install dependencies: `uv sync`
-- Run the CLI: `uv run project-intel`
+- Run the CLI: `atlas` (or `uv run atlas`)
 - Run all tests: `uv run pytest`
 - Run a single test: `uv run pytest tests/test_smoke.py::test_main_runs`
 - Lint: `uv run ruff check .`

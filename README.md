@@ -11,7 +11,7 @@ This project is managed with [mise](https://mise.jdx.dev/) (Python + uv toolchai
 ```bash
 mise install
 uv sync
-uv run project-intel
+atlas
 ```
 
 Run tests and lint:
