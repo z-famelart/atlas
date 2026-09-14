@@ -10,7 +10,7 @@ import click
 
 from ..discovery.scope import ScopeConfig
 from ..facts.store import FactStore
-from ..llm.providers import ClaudeCodeProvider, DisabledProvider
+from ..llm.providers import ClaudeCodeProvider, DisabledProvider, OllamaProvider
 from .registry import STAGE_REGISTRY
 from .types import PipelineContext
 
@@ -40,18 +40,41 @@ def main() -> None:
 @main.command()
 @click.argument("path", type=click.Path(exists=True, file_okay=False, path_type=Path))
 @click.option("--no-llm", is_flag=True, default=False, help="Disable LLM stages (architecture, domain, onboarding).")
-def analyze(path: Path, no_llm: bool) -> None:
+@click.option("--llm-provider", default="ollama", show_default=True,
+              type=click.Choice(["ollama", "claude-code"]),
+              help="LLM backend to use for interpretation stages.")
+@click.option("--ollama-model", default=None, envvar="OLLAMA_MODEL",
+              help="Ollama model tag (e.g. qwen2.5:14b). Required when --llm-provider=ollama. "
+                   "Also read from $OLLAMA_MODEL.")
+@click.option("--ollama-url", default="http://localhost:11434", show_default=True, envvar="OLLAMA_URL",
+              help="Base URL of the Ollama server.")
+@click.option("--claude-model", default="claude-haiku-4-5-20251001", show_default=True, envvar="CLAUDE_MODEL",
+              help="Claude model ID when --llm-provider=claude-code.")
+def analyze(path: Path, no_llm: bool, llm_provider: str, ollama_model: str | None,
+            ollama_url: str, claude_model: str) -> None:
     """Run all analysis stages against a repository at PATH.
 
-    LLM stages are enabled by default and use the local Claude Code session
-    (no API key required). Pass --no-llm to skip them.
+    LLM stages are enabled by default and use a local Ollama server (no API key
+    required). Set OLLAMA_MODEL (e.g. qwen2.5:14b) or pass --ollama-model.
+    Pass --no-llm to skip LLM stages entirely, or --llm-provider=claude-code to
+    use the local Claude Code CLI instead.
     """
     repo_path = path.resolve()
     db_dir = repo_path / ".atlas-cache"
     db_dir.mkdir(parents=True, exist_ok=True)
     store = FactStore(db_dir / "facts.sqlite")
 
-    llm_provider = DisabledProvider() if no_llm else ClaudeCodeProvider()
+    if no_llm:
+        llm_provider_obj = DisabledProvider()
+    elif llm_provider == "claude-code":
+        llm_provider_obj = ClaudeCodeProvider(model=claude_model)
+    else:
+        if not ollama_model:
+            raise click.ClickException(
+                "No Ollama model configured — set OLLAMA_MODEL (e.g. qwen2.5:14b) "
+                "or pass --ollama-model, or run with --no-llm."
+            )
+        llm_provider_obj = OllamaProvider(model=ollama_model, base_url=ollama_url)
 
     run_id = str(uuid.uuid4())
     ctx = PipelineContext(
@@ -59,7 +82,7 @@ def analyze(path: Path, no_llm: bool) -> None:
         repository_path=repo_path,
         run_id=run_id,
         scope=_DEFAULT_SCOPE,
-        llm_provider=llm_provider,
+        llm_provider=llm_provider_obj,
     )
 
     click.echo(f"run_id:    {run_id}")

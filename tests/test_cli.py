@@ -161,7 +161,7 @@ def test_failing_stage_does_not_abort_others(tmp_path: Path):
 
 def test_cli_analyze_runs(fixture_repo: Path):
     result = subprocess.run(
-        [sys.executable, "-m", "project_intel.cli.main", "analyze", str(fixture_repo)],
+        [sys.executable, "-m", "project_intel.cli.main", "analyze", "--no-llm", str(fixture_repo)],
         capture_output=True,
         text=True,
         check=False,
