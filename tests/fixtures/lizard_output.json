@@ -1,0 +1,25 @@
+[
+  {
+    "filename": "src/foo.py",
+    "nloc": 40,
+    "average_cyclomatic_complexity": 3.5,
+    "functions": [
+      {"name": "parse_request", "cyclomatic_complexity": 3, "nloc": 20},
+      {"name": "handle_error", "cyclomatic_complexity": 4, "nloc": 20}
+    ]
+  },
+  {
+    "filename": "src/bar.py",
+    "nloc": 10,
+    "average_cyclomatic_complexity": 1.0,
+    "functions": [
+      {"name": "simple", "cyclomatic_complexity": 1, "nloc": 10}
+    ]
+  },
+  {
+    "filename": "src/empty.py",
+    "nloc": 0,
+    "average_cyclomatic_complexity": 0.0,
+    "functions": []
+  }
+]
