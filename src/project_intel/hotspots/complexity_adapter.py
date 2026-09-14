@@ -15,12 +15,27 @@ _VERSION = "1.0"
 _ANALYZER = f"{_NAME}@{_VERSION}"
 
 
+_MVP_EXTENSIONS: frozenset[str] = frozenset(
+    [".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".java", ".kt", ".rb", ".rs", ".c", ".cpp", ".h"]
+)
+
+_SKIP_DIRS: frozenset[str] = frozenset(
+    [".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build",
+     ".mypy_cache", ".ruff_cache", ".pytest_cache", ".project-intel"]
+)
+
+
 def _lizard_command(ctx: AdapterContext) -> str:
     """Run lizard analysis on target_path and return a JSON string."""
     import lizard  # imported lazily so the adapter is importable even without lizard
 
-    files = list(ctx.target_path.rglob("*"))
-    file_paths = [str(f) for f in files if f.is_file()]
+    file_paths = [
+        str(f)
+        for f in ctx.target_path.rglob("*")
+        if f.is_file()
+        and f.suffix in _MVP_EXTENSIONS
+        and not any(part in _SKIP_DIRS for part in f.parts)
+    ]
 
     results = []
     for file_info in lizard.analyze_files(file_paths):
