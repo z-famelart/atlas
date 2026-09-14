@@ -10,14 +10,20 @@ Implement the generic machinery every LLM-based feature (Architecture Interpreta
 
 ## Scope
 
-### `LLMProvider` interface (Décidé Q94)
+### `LLMProvider` interface (Décidé Q94, resolved 2026-09-14)
 
 ```python
 class LLMProvider(Protocol):
     def complete(self, prompt: StructuredPrompt, schema: type[T]) -> T: ...
 ```
 
-Abstracts over provider/model choice so the synthesis layer never talks to a specific API directly. This feature ships the interface and one concrete implementation; which provider is the MVP default is an implementation choice, not a re-litigation of the (still-open) provider question.
+Abstracts over provider/model choice so the synthesis layer never talks to a specific API directly. The MVP default is **not** a hosted-API-key integration — the user running this project has no LLM API keys, and the Design Decisions default-provider choice (Q94) was resolved accordingly:
+
+- **`ClaudeCodeProvider` (default)** — shells out to the `claude` CLI (already installed and authenticated on the machine running `project-intel`, via the user's existing Claude Code session/subscription — no separate API key) in non-interactive/print mode, passing the prompt and requesting structured/JSON output the implementation parses and validates against `schema`. Check `claude --help` at implementation time for the exact current flags (e.g. `-p`/`--print`, `--output-format json`) rather than assuming a specific CLI version's flag names. Because this runs the `claude` binary as a subprocess per call, treat each call as comparatively slow/serial — this provider does not need to be optimized for throughput, only correctness.
+- **`DisabledProvider` (fallback)** — the no-op provider already required by **Décidé Q95** (LLM disabled), returning the same `not_analyzed: llm_failed`-shaped outcome as any other provider failure. Available unconditionally, e.g. via a `--no-llm` style switch surfaced later by Feature 13, or simply by not configuring a real provider.
+- **Local LLM (e.g. Ollama), per Q168 — deferred, not built in this feature.** The user will add this once they have a local model running; the `LLMProvider` interface must not need to change when that happens — a third implementation is added later, this feature's job is only to make sure the interface doesn't preclude it (see Explicitly out of scope).
+
+This feature ships all of: the `LLMProvider` protocol, `ClaudeCodeProvider`, and `DisabledProvider`. No hosted-API-key provider (OpenAI/Anthropic-API/etc.) is built here — if one is wanted later, it's a fourth implementation added the same way a local-LLM one would be, not a change to this feature's scope.
 
 ### Structured output only (Décidé Q106)
 
@@ -51,16 +57,18 @@ A token budget is attached per call-site category (not global-only), with a runn
 
 - Any real prompt content for architecture/domain/onboarding synthesis — later features.
 - Content-selection logic (which files/facts to include within budget) — **Décidé Q87** assigns this to hotspot/centrality reuse, which is a later feature's responsibility; this feature only enforces that *whatever* is selected fits the schema and budget contract.
-- Local-LLM-specific wiring (**Proposition Q168**, not decided) — the `LLMProvider` interface must not preclude it, but no local-model implementation ships here.
+- Local-LLM-specific wiring (**Proposition Q168**, not decided when, only that it's wanted eventually) — the `LLMProvider` interface must not preclude it, but no local-model implementation ships here; the user will request it as a separate follow-up once a local model is available.
+- Any hosted-API-key provider (OpenAI/Anthropic API/etc.) — not needed given the `ClaudeCodeProvider` default; add one later only if actually wanted, as a new implementation, not a scope change to this feature.
 - Exact context-size default (**Ouvert Q86**) — the budget mechanism must be configurable, with no hard-coded assumption about what the "right" default is.
 - Multi-pass orchestration strategy across features (**Proposition Q96/Q98**, not decided in detail) — this feature provides the primitive a single pass is built from; sequencing multiple passes into one report is assembled later.
 
 ## Acceptance criteria
 
-- `LLMProvider` protocol + one concrete implementation (can be a deterministic stub/fake for testing plus one real provider integration).
+- `LLMProvider` protocol + `ClaudeCodeProvider` (real, subprocess-backed) + `DisabledProvider` (no-op fallback), plus a deterministic fake provider used in this feature's own tests (so tests don't shell out to `claude`).
 - Structured request/response cycle enforces schema validation on both ends.
+- `ClaudeCodeProvider` correctly invokes the `claude` CLI non-interactively, parses its structured output, and surfaces a malformed/non-JSON response as a call failure (`not_analyzed: llm_failed`), not a crash — tested against a fixture of captured real CLI output, same fixture-based approach as Feature 02's adapter contract tests, so this doesn't require `claude` to be installed in CI.
 - Citation validator: given a `FactStore` and a response with `fact_ids`, correctly accepts valid ids and rejects unknown ones; a test proves an unknown-id response never reaches the caller as a successful result.
-- A "disabled" no-op provider produces the same `not_analyzed: llm_failed`-shaped result as a real provider failure, proving downstream code needs no separate disabled-mode branch.
+- `DisabledProvider` produces the same `not_analyzed: llm_failed`-shaped result as a real provider failure, proving downstream code needs no separate disabled-mode branch.
 - Cache: same prompt+schema+provider hash returns the cached response without a second provider call (proven via a call-counting fake provider in tests); a changed prompt content bypasses the cache.
 - Budget: a call exceeding a configured per-category budget is skipped and recorded, not raised as an exception.
 - `uv run pytest` and `uv run ruff check .` pass.

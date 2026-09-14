@@ -321,7 +321,7 @@ Décidé — même mécanisme que tout le reste (Q37) : chaque affirmation de do
 Décidé — c'est un principe non négociable du Product Brief. Mécanisme : sélection déterministe bornée par budget (Q86/Q87) + refus explicite de tout mode "envoyer le repo entier".
 
 **94. Comment gère-t-on plusieurs LLM providers ?**
-Proposition. Interface `LLMProvider` abstraite (prompt structuré in, réponse structurée validée out) permettant de brancher différents providers/modèles sans changer la couche synthèse ; le choix du provider par défaut est une décision produit hors scope de ce document.
+Décidé (résolu 2026-09-14). Interface `LLMProvider` abstraite (prompt structuré in, réponse structurée validée out) permettant de brancher différents providers/modèles sans changer la couche synthèse. Provider par défaut du MVP : le CLI **Claude Code** déjà installé et authentifié sur la machine, invoqué en mode non-interactif avec sortie structurée — aucune clé API séparée à gérer. Repli : le no-op provider déjà requis par Q95 (LLM désactivé). Un provider LLM local (Ollama, cf. Q168) sera ajouté plus tard, quand disponible, sans re-discuter ce choix ni changer l'interface `LLMProvider`.
 
 **95. Peut-on désactiver complètement le LLM ?**
 Décidé — oui, obligatoire (cohérent avec Q10/Q198) : le rapport reste généré avec les sections LLM marquées `not_analyzed` plutôt que le pipeline entier bloqué.
