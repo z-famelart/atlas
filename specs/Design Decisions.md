@@ -41,7 +41,7 @@ Décidé. Les cinq granularités doivent être adressables dans le modèle de Fa
 Décidé — oui, obligatoire au MVP : include/exclude par path glob, par langage, et par repository dans la configuration. C'est un garde-fou direct contre le non-goal "agent qui explore aveuglément toute la codebase".
 
 **10. L'outil doit-il pouvoir fonctionner complètement offline ?**
-Décidé — oui pour toute la partie déterministe (discovery, code graph, hotspots, Git). Le mode offline désactive uniquement les étapes LLM et connectors externes ; le rapport HTML doit rester généré et utile sans ces étapes (cf. Q198, Q137).
+Décidé — oui pour toute la partie déterministe (discovery, code graph, hotspots, Git) dans tous les cas. Mise à jour 2026-09-14 : avec `OllamaProvider` configuré (Q94/Q168), les étapes LLM restent également utilisables offline, puisque Ollama tourne en local sans réseau — seul `ClaudeCodeProvider` nécessite une connexion sortante. Le mode offline désactive donc les connectors externes dans tous les cas, et les étapes LLM seulement si aucun provider local n'est configuré ; le rapport HTML doit rester généré et utile sans ces étapes quoi qu'il arrive (cf. Q198, Q137).
 
 ---
 
@@ -297,7 +297,7 @@ Proposition — P1. Utile pour détecter le "documentation drift" (Capability Ma
 Proposition. Un sous-ensemble sélectionné : fichiers d'entrée jugés importants (cf. Q87), README/docs pertinents, signatures de types/entités extraites déterministiquement, noms de tests significatifs — jamais le repository complet (cf. Q93, non-goal explicite).
 
 **86. Combien de contexte LLM maximum ?**
-⚠️ **Ouvert — impact architectural.** Dépend du provider choisi (cf. Q94) et du budget (cf. Q101). Proposition par défaut : un budget de tokens configurable par run avec un plafond conservateur, le sélecteur de contenu (Q87) devant respecter ce budget plutôt que l'inverse.
+Décidé (résolu 2026-09-14, débloqué par Q94/Q168). Pas de nombre codé en dur : `OllamaProvider` interroge la fenêtre de contexte réelle du modèle configuré (`/api/show`) au démarrage, puis applique une marge de sécurité conservatrice (ex. ne consommer qu'une fraction de cette fenêtre par appel, le reste réservé à la sortie + au prompt système) pour calculer le budget par catégorie d'appel (Q101). Si l'introspection échoue, repli sur un budget conservateur fixe plutôt qu'un crash. Le sélecteur de contenu (Q87) respecte ce budget calculé, jamais l'inverse.
 
 **87. Comment sélectionnons-nous les fichiers importants ?**
 Décidé. Réutilisation directe du score de hotspot/centralité (section F) et des entrypoints détectés (Q43 de la Capability Matrix / graph) — sélection déterministe, pas de LLM pour choisir quoi lire.
@@ -321,7 +321,10 @@ Décidé — même mécanisme que tout le reste (Q37) : chaque affirmation de do
 Décidé — c'est un principe non négociable du Product Brief. Mécanisme : sélection déterministe bornée par budget (Q86/Q87) + refus explicite de tout mode "envoyer le repo entier".
 
 **94. Comment gère-t-on plusieurs LLM providers ?**
-Décidé (résolu 2026-09-14). Interface `LLMProvider` abstraite (prompt structuré in, réponse structurée validée out) permettant de brancher différents providers/modèles sans changer la couche synthèse. Provider par défaut du MVP : le CLI **Claude Code** déjà installé et authentifié sur la machine, invoqué en mode non-interactif avec sortie structurée — aucune clé API séparée à gérer. Repli : le no-op provider déjà requis par Q95 (LLM désactivé). Un provider LLM local (Ollama, cf. Q168) sera ajouté plus tard, quand disponible, sans re-discuter ce choix ni changer l'interface `LLMProvider`.
+Décidé (résolu 2026-09-14, mis à jour 2026-09-14 — Ollama disponible). Interface `LLMProvider` abstraite (prompt structuré in, réponse structurée validée out) permettant de brancher différents providers/modèles sans changer la couche synthèse. Trois implémentations, une seule configurée à la fois par run (pas de chaîne de fallback automatique entre providers — complexité non spécifiée ailleurs, donc non ajoutée) :
+- **`OllamaProvider` (nouveau défaut)** — local, Ollama + Qwen (cf. Q168). Aucune donnée ne quitte la machine ; c'est le choix le plus cohérent avec le principe local-first (Q163) et le meilleur pour les repositories confidentiels (cf. Q167 mis à jour).
+- **`ClaudeCodeProvider`** — reste disponible, sélectionnable en configuration ; utile si l'utilisateur veut une qualité de synthèse supérieure sans dépendre du matériel local, au prix d'un appel sortant vers le compte Claude Code de l'utilisateur (donc pas fully local).
+- **`DisabledProvider`** — toujours le repli final (Q95), LLM désactivé.
 
 **95. Peut-on désactiver complètement le LLM ?**
 Décidé — oui, obligatoire (cohérent avec Q10/Q198) : le rapport reste généré avec les sections LLM marquées `not_analyzed` plutôt que le pipeline entier bloqué.
@@ -568,10 +571,10 @@ Proposition. Passage systématique de tout contenu sélectionné pour le LLM à 
 Proposition — P1. Non détaillé dans les documents actuels ; à minima, les noms de contributeurs (Q189 Capability Matrix) pourraient être pseudonymisés en option avant envoi au LLM ou dans un rapport destiné à être partagé largement.
 
 **167. Comment gère-t-on les repositories clients confidentiels ?**
-Décidé (principe) — cf. Q163/Q164 : le mode local-only + désactivation LLM (Q95) doit permettre une analyse complète d'un repository confidentiel sans qu'aucune donnée ne sorte, seule dégradation étant l'absence de synthèse LLM.
+Décidé — cf. Q163/Q164 : le mode local-only + désactivation LLM (Q95) permet toujours une analyse complète sans qu'aucune donnée ne sorte, au prix de l'absence de synthèse LLM. Mise à jour 2026-09-14 : ce compromis n'est plus nécessaire quand `OllamaProvider` (Q94/Q168) est configuré — la synthèse LLM elle-même reste alors entièrement locale, donc utilisable sur un repository confidentiel sans dégradation. `ClaudeCodeProvider` reste à éviter dans ce cas précis (les prompts sortent vers le compte Claude Code de l'utilisateur), sauf si le client a explicitement autorisé cet usage.
 
 **168. Peut-on utiliser un LLM local ?**
-Proposition — oui, souhaitable : l'interface `LLMProvider` (Q94) doit pouvoir cibler un modèle local (ex. via Ollama ou équivalent) sans changement de la couche synthèse, ce qui résout Q167 sans désactiver complètement l'interprétation.
+Décidé (résolu 2026-09-14). Oui — **Ollama** (servi en local, `http://localhost:11434` par défaut) avec un modèle **Qwen** installé par l'utilisateur. Le nom exact du modèle (tag Ollama, ex. `qwen2.5:14b`) est une valeur de configuration runtime, jamais codée en dur dans le code ou la spec — ce que l'utilisateur a réellement installé peut changer. `OllamaProvider` interroge `/api/show` sur le modèle configuré pour connaître sa fenêtre de contexte réelle plutôt que de supposer un nombre (cf. Q86). Sortie structurée : `OllamaProvider` utilise le paramètre `format` de l'API Ollama (contrainte JSON schema si la version installée le supporte, sinon `format: "json"` simple) — dans tous les cas, la validation de schéma + citations de Feature 07 (Q104/Q105) s'applique quand même en aval, sans confiance aveugle dans la contrainte du provider.
 
 **169. Peut-on désactiver certaines catégories d'analyse ?**
 Décidé — oui, chaque catégorie d'analyzer (section B-K) doit être activable/désactivable en configuration indépendamment des autres.

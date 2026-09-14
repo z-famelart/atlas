@@ -10,20 +10,20 @@ Implement the generic machinery every LLM-based feature (Architecture Interpreta
 
 ## Scope
 
-### `LLMProvider` interface (Décidé Q94, resolved 2026-09-14)
+### `LLMProvider` interface (Décidé Q94/Q168, resolved 2026-09-14)
 
 ```python
 class LLMProvider(Protocol):
     def complete(self, prompt: StructuredPrompt, schema: type[T]) -> T: ...
 ```
 
-Abstracts over provider/model choice so the synthesis layer never talks to a specific API directly. The MVP default is **not** a hosted-API-key integration — the user running this project has no LLM API keys, and the Design Decisions default-provider choice (Q94) was resolved accordingly:
+Abstracts over provider/model choice so the synthesis layer never talks to a specific API directly. Exactly one provider is configured per run — no automatic cross-provider fallback chain (that's added complexity nothing in Design Decisions calls for; a run either has a working provider configured or it doesn't). Three concrete implementations:
 
-- **`ClaudeCodeProvider` (default)** — shells out to the `claude` CLI (already installed and authenticated on the machine running `project-intel`, via the user's existing Claude Code session/subscription — no separate API key) in non-interactive/print mode, passing the prompt and requesting structured/JSON output the implementation parses and validates against `schema`. Check `claude --help` at implementation time for the exact current flags (e.g. `-p`/`--print`, `--output-format json`) rather than assuming a specific CLI version's flag names. Because this runs the `claude` binary as a subprocess per call, treat each call as comparatively slow/serial — this provider does not need to be optimized for throughput, only correctness.
-- **`DisabledProvider` (fallback)** — the no-op provider already required by **Décidé Q95** (LLM disabled), returning the same `not_analyzed: llm_failed`-shaped outcome as any other provider failure. Available unconditionally, e.g. via a `--no-llm` style switch surfaced later by Feature 13, or simply by not configuring a real provider.
-- **Local LLM (e.g. Ollama), per Q168 — deferred, not built in this feature.** The user will add this once they have a local model running; the `LLMProvider` interface must not need to change when that happens — a third implementation is added later, this feature's job is only to make sure the interface doesn't preclude it (see Explicitly out of scope).
+- **`OllamaProvider` (default)** — talks to a local Ollama server (default `http://localhost:11434`, overridable) running a model the user has installed (e.g. a Qwen model). The exact model tag (`OLLAMA_MODEL` config/env var, e.g. `qwen2.5:14b`) is **runtime configuration, never hardcoded** — what's actually installed is a fact about the user's machine, not something this spec can assume. On startup, calls Ollama's `/api/show` for the configured model to read its real context window, used to compute this call-site's token budget (Q86) rather than assuming a number; falls back to a small conservative fixed budget if introspection fails, rather than crashing. Requests structured output via Ollama's `format` parameter — a full JSON-schema constraint if the installed Ollama version supports it, otherwise plain `format: "json"` — but **never trusts that constraint alone**: this feature's existing schema + citation validation (see below) runs unconditionally on every response regardless of what the provider claims to guarantee. Entirely local — no network call leaves the machine, which is also why this is now the default (cf. Q163/Q167: best fit for the local-first principle and for confidential repositories).
+- **`ClaudeCodeProvider`** — shells out to the `claude` CLI (already installed/authenticated via the user's Claude Code session, no separate API key) in non-interactive/print mode. Still available, selectable in configuration when higher synthesis quality is wanted and the machine's local compute/model isn't the bottleneck to avoid — check `claude --help` at implementation time for current flags (e.g. `-p`/`--print`, `--output-format json`) rather than assuming a specific version. Not fully local (prompts leave the machine to the user's Claude Code account), so avoid it for confidential repositories unless explicitly authorized (Q167).
+- **`DisabledProvider`** — the no-op provider already required by **Décidé Q95** (LLM disabled), returning the same `not_analyzed: llm_failed`-shaped outcome as any other provider failure. Always available as the final fallback, e.g. via a `--no-llm` switch surfaced later by Feature 13, or simply by not configuring a real provider.
 
-This feature ships all of: the `LLMProvider` protocol, `ClaudeCodeProvider`, and `DisabledProvider`. No hosted-API-key provider (OpenAI/Anthropic-API/etc.) is built here — if one is wanted later, it's a fourth implementation added the same way a local-LLM one would be, not a change to this feature's scope.
+This feature ships all three. No hosted-API-key provider (OpenAI/Anthropic-API/etc.) is built here — if one is wanted later, it's a fourth implementation added the same way, not a change to this feature's scope.
 
 ### Structured output only (Décidé Q106)
 
@@ -49,26 +49,26 @@ A failed call (provider error, schema validation failure, or citation validation
 
 Cache key = hash(prompt content + schema/prompt version + provider/model identifier) → response. Persisted so it survives across runs (same store family as facts, not in-memory-only). Invalidation is automatic and implicit: if the underlying selected content changes, the hash changes — this feature does not need to implement any dependency-tracking invalidation logic (**Décidé Q103** explicitly calls this out as a consequence of the hashing scheme, not a separate mechanism to build).
 
-### Budget (Décidé Q100, Q101)
+### Budget (Décidé Q100, Q101, Q86)
 
-A token budget is attached per call-site category (not global-only), with a running total tracked per analysis run. Exceeding budget causes graceful degradation (the call is skipped, recorded as `not_analyzed: budget_exceeded`) — never a hard crash of the pipeline.
+A token budget is attached per call-site category (not global-only), with a running total tracked per analysis run. For `OllamaProvider`, this budget is derived from the configured model's real context window (introspected via `/api/show`, see above) minus a reserved margin for the prompt scaffolding and expected output — not a number invented by this spec. For `ClaudeCodeProvider`, use a conservative fixed default (the CLI doesn't expose an equivalent introspection call) — configurable, not hard-coded as a magic number buried in logic. Exceeding budget causes graceful degradation (the call is skipped, recorded as `not_analyzed: budget_exceeded`) — never a hard crash of the pipeline.
 
 ## Explicitly out of scope for this feature
 
 - Any real prompt content for architecture/domain/onboarding synthesis — later features.
 - Content-selection logic (which files/facts to include within budget) — **Décidé Q87** assigns this to hotspot/centrality reuse, which is a later feature's responsibility; this feature only enforces that *whatever* is selected fits the schema and budget contract.
-- Local-LLM-specific wiring (**Proposition Q168**, not decided when, only that it's wanted eventually) — the `LLMProvider` interface must not preclude it, but no local-model implementation ships here; the user will request it as a separate follow-up once a local model is available.
-- Any hosted-API-key provider (OpenAI/Anthropic API/etc.) — not needed given the `ClaudeCodeProvider` default; add one later only if actually wanted, as a new implementation, not a scope change to this feature.
-- Exact context-size default (**Ouvert Q86**) — the budget mechanism must be configurable, with no hard-coded assumption about what the "right" default is.
+- Any hosted-API-key provider (OpenAI/Anthropic API/etc.) — not needed given the `OllamaProvider`/`ClaudeCodeProvider` defaults; add one later only if actually wanted, as a new implementation, not a scope change to this feature.
 - Multi-pass orchestration strategy across features (**Proposition Q96/Q98**, not decided in detail) — this feature provides the primitive a single pass is built from; sequencing multiple passes into one report is assembled later.
+- Automatic cross-provider fallback (e.g. retry on `ClaudeCodeProvider` if `OllamaProvider` fails) — not decided anywhere, and would add nondeterminism to which provider actually answered a given call; exactly one provider is configured per run.
 
 ## Acceptance criteria
 
-- `LLMProvider` protocol + `ClaudeCodeProvider` (real, subprocess-backed) + `DisabledProvider` (no-op fallback), plus a deterministic fake provider used in this feature's own tests (so tests don't shell out to `claude`).
+- `LLMProvider` protocol + `OllamaProvider` (real, HTTP-backed) + `ClaudeCodeProvider` (real, subprocess-backed) + `DisabledProvider` (no-op fallback), plus a deterministic fake provider used in this feature's own tests (so tests don't require a running Ollama server or the `claude` CLI).
 - Structured request/response cycle enforces schema validation on both ends.
-- `ClaudeCodeProvider` correctly invokes the `claude` CLI non-interactively, parses its structured output, and surfaces a malformed/non-JSON response as a call failure (`not_analyzed: llm_failed`), not a crash — tested against a fixture of captured real CLI output, same fixture-based approach as Feature 02's adapter contract tests, so this doesn't require `claude` to be installed in CI.
-- Citation validator: given a `FactStore` and a response with `fact_ids`, correctly accepts valid ids and rejects unknown ones; a test proves an unknown-id response never reaches the caller as a successful result.
+- `OllamaProvider` correctly calls the configured model's `/api/show` for context-window introspection (falling back to a fixed conservative budget if it fails, not crashing), requests structured output via `format`, and surfaces a malformed/non-JSON response as a call failure (`not_analyzed: llm_failed`) rather than a crash — tested against fixtures of captured real Ollama API responses, so this doesn't require a running Ollama server in CI.
+- `ClaudeCodeProvider` correctly invokes the `claude` CLI non-interactively, parses its structured output, and surfaces a malformed/non-JSON response as a call failure the same way — tested against a fixture of captured real CLI output, same fixture-based approach as Feature 02's adapter contract tests, so this doesn't require `claude` to be installed in CI.
+- Citation validator: given a `FactStore` and a response with `fact_ids`, correctly accepts valid ids and rejects unknown ones — tested against both `OllamaProvider` and `ClaudeCodeProvider` response fixtures, proving the validator doesn't trust either provider's own structured-output guarantee; a test proves an unknown-id response never reaches the caller as a successful result regardless of provider.
 - `DisabledProvider` produces the same `not_analyzed: llm_failed`-shaped result as a real provider failure, proving downstream code needs no separate disabled-mode branch.
-- Cache: same prompt+schema+provider hash returns the cached response without a second provider call (proven via a call-counting fake provider in tests); a changed prompt content bypasses the cache.
-- Budget: a call exceeding a configured per-category budget is skipped and recorded, not raised as an exception.
+- Cache: same prompt+schema+provider hash returns the cached response without a second provider call (proven via a call-counting fake provider in tests); a changed prompt content bypasses the cache; the same prompt against two different providers/models produces two distinct cache entries (provider/model identifier is part of the key).
+- Budget: a call exceeding a configured per-category budget is skipped and recorded, not raised as an exception; `OllamaProvider`'s budget reflects the fake/fixture model's introspected context window in tests, not a hard-coded number.
 - `uv run pytest` and `uv run ruff check .` pass.
