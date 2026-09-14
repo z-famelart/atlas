@@ -6,6 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 The repo has two parts: the specs (below) and a Python implementation being built out feature by feature under `src/project_intel/`, following [specs/features/](specs/features/) in order. Implementation is early — do not assume a feature exists just because a later one's spec references it; check `specs/features/README.md` and the actual source tree for what has landed so far.
 
+## Git workflow
+
+- **Linear history only** — never use `git merge`; always rebase branches before integrating (`git rebase main` then `git merge --ff-only`).
+- Worktrees are fine for parallel work, but the branch must be rebased on top of `main` before merging, so the result is a straight line of commits.
+- If fast-forward is impossible (histories diverged), fix it with `git rebase`, not `git merge`.
+
 ## Commands
 
 - Install toolchain (pins Python 3.12 + uv via `.mise.toml`): `mise install`
