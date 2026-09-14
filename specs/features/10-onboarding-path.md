@@ -29,6 +29,10 @@ All narrative fields carry `fact_ids` and `confidence` per Feature 07's standard
 
 `Fact(type=onboarding_path, subject=Repository|System, value=<the shape above>, provenance=hypothesis)`.
 
+### Logging (per [README](README.md#logging-a-convention-every-feature-follows)'s logging convention)
+
+Nothing new to build here beyond calling Feature 07's `LLMProvider` — its logging (see 07's own addendum) already covers the call this feature makes. This feature's own logger only adds `INFO` on stage start/end and `WARNING` if the stage degrades to `not_analyzed`.
+
 ## CLI stage registration (Feature 06b)
 
 This feature exposes a module-level `STAGE: Stage` object (name `"onboarding"`) per [06b](06b-minimal-cli.md)'s contract, with the same `llm_provider=None` degrade path as Features 08/09. Registering it is one import + one entry in `STAGE_REGISTRY`, placed last — after `code_graph`, `hotspots`, `architecture`, and `domain` — since it synthesizes their combined output.

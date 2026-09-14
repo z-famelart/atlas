@@ -2,23 +2,25 @@
 
 Each file is one feature, scoped strictly to points marked **Décidé** in [`../Design Decisions.md`](../Design%20Decisions.md). Nothing marked **Proposition** or **Ouvert** is implemented as if decided — where a feature depends on an undecided point, its spec says so explicitly under "Explicitly out of scope" and defers it.
 
-Build (and commit) in this order — each feature depends only on the ones before it:
+Build (and commit) in this order — each feature depends only on the ones before it. **As of this writing, Features 01 through 13 are all already implemented** (`git log` is the source of truth for exact status; this list is kept for the dependency order and as an index, not as a to-do list) — 11b and 14 below are the current frontier:
 
-1. [Facts & Evidence model](01-facts-and-evidence-model.md) — the data model and store everything else is built on.
-2. [Adapter framework](02-adapter-framework.md) — generic contract for wrapping external tools.
-3. [Discovery](03-discovery.md) — **Part A** (buildable now): signature-based framework/build/CI/IaC detection, Git presence, documents, scope enforcement. **Part B** (gated, see below): the concrete language/LOC adapter.
-4. [Git analysis](04-git-analysis.md) — churn, co-change, rename-aware history.
-5. [Code graph](05-code-graph.md) — **Part A** (buildable now): `GraphProvider` protocol, multi-level aggregation, centrality/communities/cycles, all tested against fixture facts. **Part B** (gated): the concrete `GraphProvider`.
-6. [Hotspots](06-hotspots.md) — **Part A** (buildable now): the scoring engine (normalization, combination, decomposition, missing-data handling, weights), tested against fixture facts. **Part B** (gated): the concrete complexity adapter.
-6b. [Minimal CLI](06b-minimal-cli.md) — a walking-skeleton `project-intel analyze`/`facts query`. Does **not** depend on Feature 06 — it's buildable as soon as 01/02 exist, and runs whatever subset of 03/04/05/06/08/09/10 is registered at the time, so the deterministic (and later LLM) pipeline is testable incrementally, feature by feature, without waiting for the full CLI.
-7. [LLM orchestration framework](07-llm-orchestration.md) — provider abstraction, citations, caching, budget. **Already implemented** — its spec is a stable record of what shipped (`ClaudeCodeProvider` as the current default) and must not be rewritten to add new providers; see 07b below for how those are added instead.
-7b. [Ollama local provider](07b-ollama-provider.md) — a second `LLMProvider` implementation for a local Ollama + Qwen setup, added additively on top of the already-shipped Feature 07 without changing its interface or default. Doesn't depend on Feature 08/09/10.
-8. [Architecture interpretation](08-architecture-interpretation.md) — sourced architectural hypotheses. **Already implemented.**
-9. [Domain understanding](09-domain-understanding.md) — business concepts/workflows/glossary.
-10. [Onboarding path](10-onboarding-path.md) — synthesis of 05/06/08/09 into a recommended entry path.
-11. [HTML report](11-html-report.md) — the primary output.
-12. [MCP server](12-mcp-server.md) — the **AI-facing** entry point (read-only, bounded queries over the `FactStore` for a coding agent).
-13. [CLI](13-cli.md) — the **human-facing** entry point: extends 06b with config file, multi-repo, selective runs, leveled logging (verbosity + actionable LLM-failure detail), interactive prompts for missing config, and LLM/report wiring.
+1. [Facts & Evidence model](01-facts-and-evidence-model.md) — the data model and store everything else is built on. **Implemented.**
+2. [Adapter framework](02-adapter-framework.md) — generic contract for wrapping external tools. **Implemented.**
+3. [Discovery](03-discovery.md) — Part A: signature-based framework/build/CI/IaC detection, Git presence, documents, scope enforcement. Part B: the concrete language/LOC adapter (tokei). **Implemented (both parts).**
+4. [Git analysis](04-git-analysis.md) — churn, co-change, rename-aware history. **Implemented.**
+5. [Code graph](05-code-graph.md) — Part A: `GraphProvider` protocol, multi-level aggregation, centrality/communities/cycles. Part B: the concrete `GraphProvider` (graphify). **Implemented (both parts).**
+6. [Hotspots](06-hotspots.md) — Part A: the scoring engine. Part B: the concrete complexity adapter (lizard). **Implemented (both parts).**
+6b. [Minimal CLI](06b-minimal-cli.md) — a walking-skeleton `analyze`/`facts query`. **Implemented** (superseded day-to-day by Feature 13, which extends this same module).
+7. [LLM orchestration framework](07-llm-orchestration.md) — provider abstraction, citations, caching, budget. **Implemented** — its spec is a stable record of what shipped (`ClaudeCodeProvider` as the framework's own default) and must not be rewritten to add new providers; see 07b below for how those are added instead.
+7b. [Ollama local provider](07b-ollama-provider.md) — a second `LLMProvider` implementation for a local Ollama + Qwen setup, added additively on top of the already-shipped Feature 07. **Implemented** — also now wired as the CLI's actual default provider (Feature 13's config wiring, not a change to Feature 07 itself).
+8. [Architecture interpretation](08-architecture-interpretation.md) — sourced architectural hypotheses, including the `big_ball_of_mud` catalogue entry. **Implemented.**
+9. [Domain understanding](09-domain-understanding.md) — business concepts/workflows/glossary. **Implemented.**
+10. [Onboarding path](10-onboarding-path.md) — synthesis of 05/06/08/09 into a recommended entry path. **Implemented.**
+11. [HTML report](11-html-report.md) — the primary output. **Implemented** — see **11b** below for its human-readability follow-up.
+11b. [Human-readable HTML report](11b-human-readable-report.md) — fixes Mermaid diagrams never actually rendering, and replaces the raw fact-listicle sections with narrative prose (template-generated for deterministic sections, reusing Features 08/09/10's own already-generated text for interpretive ones). Additive on top of the already-shipped Feature 11.
+12. [MCP server](12-mcp-server.md) — the **AI-facing** entry point (read-only, bounded queries over the `FactStore` for a coding agent). **Implemented.**
+13. [CLI](13-cli.md) — the **human-facing** entry point: config file, multi-repo, selective runs, leveled logging (verbosity + actionable LLM-failure detail), a live per-stage progress display, interactive prompts for missing config, and LLM/report wiring. **Implemented.**
+14. [Agent-driven synthesis via MCP](14-agent-mcp-synthesis.md) — a documented recipe (not a new MCP primitive) for a coding agent to query Feature 12's MCP server and produce a tailored, human-readable HTML synthesis. Complementary to 11/11b, not a replacement — the HTML report must stay readable standalone.
 
 **[02b — MVP scope decision](02b-mvp-scope-decision.md)** is not a numbered build step but a mandatory checkpoint: the Part B of Features 03, 05, and 06 above each require a language/tool choice that's still **Ouvert** (Q193, Q21/Q192) in `Design Decisions.md`. Whichever agent is first to reach one of those Part Bs must stop and ask the user directly for the answer, then record it by updating `Design Decisions.md` — see 02b for the exact rule. Don't guess a language "as an example" to unblock yourself; that silently turns a guess into the de facto MVP scope. All the Part A halves have no such dependency and are buildable in the order above without waiting on 02b. (As of this writing, 02b has already been resolved — see its Resolution section.)
 
@@ -42,7 +44,7 @@ Per **Décidé Q170** (resolved 2026-09-14, after real dogfooding — `atlas ana
   - `INFO` — one line per external call as it happens (adapter invoked, LLM call made/served from cache, stage started/finished).
   - `DEBUG` — the raw payload (adapter's exact invocation + pre-normalization output, full LLM prompt/response).
 - **No raw potentially-sensitive payload below `DEBUG`** — only shape/metadata (component, target, size, duration, error), consistent with the evidence-first transparency principle applied to the tool itself.
-- **This is an internal addition only** — per the [regeneration contract](#regeneration-contract), adding `logger.<level>(...)` calls inside an already-implemented feature's code changes no public interface, so it doesn't require a new lettered-suffix feature the way a real capability change would; each already-implemented feature that makes external/LLM calls (02, 03 Part B, 04, 05 Part B, 06 Part B, 07, 07b, 08) has a short "Logging" subsection added retroactively, the same way 06b retroactively added "CLI stage registration" subsections.
+- **This is an internal addition only** — per the [regeneration contract](#regeneration-contract), adding `logger.<level>(...)` calls inside an already-implemented feature's code changes no public interface, so it doesn't require a new lettered-suffix feature the way a real capability change would; each already-implemented feature that makes external/LLM calls (02, 03 Part B, 04, 05 Part B, 06 Part B, 07, 07b, 08, 09, 10) has a short "Logging" subsection added retroactively, the same way 06b retroactively added "CLI stage registration" subsections.
 - **Configuring and rendering these logs (verbosity flags, handlers, the live per-stage progress display) is [Feature 13](13-cli.md)'s job** — every other feature only emits records via its own logger; it never touches `logging` handler/formatter configuration itself.
 
 ## Dogfooding smoke test

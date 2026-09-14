@@ -35,6 +35,10 @@ Every entry carries `fact_ids` (Feature 07's mandatory-citation contract) pointi
 
 **Not built in this feature** (see Explicitly out of scope) but this feature's selector must be structured so a secrets-scanning pass can be inserted between "candidate set selected" and "sent to Feature 07" without restructuring the selection logic — i.e., selection produces an intermediate `list[CandidateContent]` object rather than calling the LLM inline.
 
+### Logging (per [README](README.md#logging-a-convention-every-feature-follows)'s logging convention)
+
+Nothing new to build here beyond calling Feature 07's `LLMProvider` — its logging (see 07's own addendum) already covers the call this feature makes. This feature's own logger only adds `INFO` on stage start/end and `WARNING` if the stage degrades to `not_analyzed`.
+
 ## CLI stage registration (Feature 06b)
 
 This feature exposes a module-level `STAGE: Stage` object (name `"domain"`) per [06b](06b-minimal-cli.md)'s contract, with the same `llm_provider=None` degrade path as Feature 08. Registering it is one import + one entry in `STAGE_REGISTRY`, placed after `hotspots` and `code_graph` since selection reads their output.
