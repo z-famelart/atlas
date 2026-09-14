@@ -41,7 +41,7 @@ class ClaudeCodeProvider:
 
     provider_id = "claude-code"
 
-    def __init__(self, model: str | None = None, timeout: int = 120) -> None:
+    def __init__(self, model: str = "claude-haiku-4-5-20251001", timeout: int = 120) -> None:
         self._model = model
         self._timeout = timeout
 
@@ -53,9 +53,7 @@ class ClaudeCodeProvider:
             f"{schema_desc}\n"
             "Respond with only valid JSON, no markdown, no explanation."
         )
-        cmd = ["claude", "-p", "--output-format", "json"]
-        if self._model:
-            cmd += ["--model", self._model]
+        cmd = ["claude", "-p", "--output-format", "json", "--model", self._model]
         try:
             proc = subprocess.run(
                 cmd,
