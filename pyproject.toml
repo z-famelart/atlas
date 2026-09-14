@@ -9,13 +9,14 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "cattrs>=26.2.0",
+    "click>=8.5.0",
     "networkx>=3.6.1",
     "packaging>=26.3",
     "sqlalchemy>=2.0.52",
 ]
 
 [project.scripts]
-project-intel = "project_intel:main"
+project-intel = "project_intel.cli.main:main"
 
 [build-system]
 requires = ["uv_build>=0.12.10,<0.13.0"]
