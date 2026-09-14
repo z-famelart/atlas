@@ -25,11 +25,16 @@ Result facts are stored with `provenance=hypothesis` (Décidé Q45) — never `o
 
 ### Pattern catalogue (Proposition Q78)
 
-A small starter list (layered/N-tier, hexagonal/ports-adapters, microservices, modular monolith, event-driven, MVC/MVVM) passed to the LLM as allowed values, with an explicit escape hatch: the model may return `pattern: "uncatalogued"` plus a free-text `pattern_description` rather than being forced into a poor-fit label. This keeps the catalogue extensible without a code change every time a new pattern name is needed.
+A small starter list (layered/N-tier, hexagonal/ports-adapters, microservices, modular monolith, event-driven, MVC/MVVM, **big ball of mud**) passed to the LLM as allowed values, with an explicit escape hatch: the model may return `pattern: "uncatalogued"` plus a free-text `pattern_description` rather than being forced into a poor-fit label. This keeps the catalogue extensible without a code change every time a new pattern name is needed.
 
-### Multiple competing hypotheses (Décidé Q82)
+**Big ball of mud is a first-class catalogue entry, not a fallback.** Most real, especially older or organically-grown, codebases don't cleanly fit any single textbook pattern — some fit none at all, some show fragments of several at once, inconsistently applied. Before this addition, that outcome had no honest label: a mismatched codebase would either get forced into the closest textbook pattern (overstating how principled its structure actually is) or fall through to `"uncatalogued"`, a label meant for "recognizable pattern we didn't name," not "recognizably unprincipled." `"big_ball_of_mud"` names that second case directly — evidence of ad-hoc coupling, unclear boundaries, or accretion without a guiding structure — so the interpretation stays honest (Product Brief principle: "Never pretend to know") instead of quietly rounding messy reality up to the nearest clean label.
 
-Uses Feature 07's multi-hypothesis schema shape directly — the response schema for this feature is `hypotheses: list[ArchitectureHypothesis]`, not a single best-guess field. When the observed graph is ambiguous, more than one entry is expected and both are surfaced, each with its own confidence.
+### Multiple, partial, or absent patterns (Décidé Q82, extended)
+
+Uses Feature 07's multi-hypothesis schema shape directly — the response schema for this feature is `hypotheses: list[ArchitectureHypothesis]`, not a single best-guess field. This shape already covers three outcomes the model must be explicitly instructed (via the prompt built from `CATALOGUE_DESCRIPTION`) to distinguish, rather than collapsing into one hypothesis by default:
+- **Ambiguous** — the graph plausibly supports more than one clean pattern; multiple hypotheses are returned, each independently confidence-scored.
+- **Partial / mixed** — different parts of the codebase follow different patterns, or a pattern is applied inconsistently (e.g. layered in most modules, a few modules bypassing the layering). This is also expressed as multiple hypotheses (one per pattern actually observed, each citing only the facts that support it), not forced into a single label — the coexistence of partial patterns is itself evidence, not noise to average away.
+- **No clean pattern** — the graph doesn't support any catalogued pattern, partially or otherwise. This is the `"big_ball_of_mud"` case above, not `"uncatalogued"` — the model is expected to actively recognize and name the absence of structure rather than defaulting to the closest-sounding label.
 
 ### Hallucination guard (Décidé Q81)
 
@@ -48,7 +53,8 @@ This feature exposes a module-level `STAGE: Stage` object (name `"architecture"`
 ## Acceptance criteria
 
 - Reads observed/computed graph facts from the `FactStore` and packages them as Feature 07's `StructuredPrompt` input.
-- Response schema supports multiple hypotheses, each with `pattern` (from the catalogue, or `uncatalogued` + description), `confidence`, and `fact_ids`.
+- Response schema supports multiple hypotheses, each with `pattern` (from the catalogue — including `big_ball_of_mud` — or `uncatalogued` + description), `confidence`, and `fact_ids`.
+- The catalogue (`_CATALOGUE` in `architecture/schema.py`) includes `"big_ball_of_mud"` alongside the original six patterns; `CATALOGUE_DESCRIPTION`'s prompt text instructs the model to prefer it over `"uncatalogued"` when the graph shows no consistent structure, and to return multiple hypotheses (one per pattern actually observed) rather than one averaged label when different parts of the codebase follow different patterns.
 - Every stored result fact has `provenance=hypothesis`.
 - A test using a fake `LLMProvider` (per Feature 07's test harness) proves: a response citing a real fact id is accepted and stored; a response citing a fake id is rejected via Feature 07's validator and surfaces as `not_analyzed: llm_failed` for this feature, not silently corrected.
 - A test with LLM disabled (Feature 07's no-op provider) proves the rest of the pipeline still completes, with this feature's section marked `not_analyzed`.

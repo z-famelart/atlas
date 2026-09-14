@@ -12,7 +12,7 @@ Feature 07 (LLM orchestration framework — already implemented). Does not depen
 
 ## Goal
 
-Add `OllamaProvider`, a second real `LLMProvider` implementation talking to a local Ollama server, per **Décidé Q168** (resolved 2026-09-14: the user has Ollama running locally with a Qwen model installed). Selectable in configuration alongside the already-shipped `ClaudeCodeProvider` and `DisabledProvider` — this feature does not change which one is the default; that's a separate, later decision the user can make once this lands (see "Explicitly out of scope").
+Add `OllamaProvider`, a second real `LLMProvider` implementation talking to a local Ollama server, per **Décidé Q168** (resolved 2026-09-14: the user has Ollama running locally with a Qwen model installed). `OllamaProvider` becomes the **default provider** wherever a provider is selected (Feature 13's config loading, or any manual wiring in the meantime) — the user now runs analyses against their local model by default, with `ClaudeCodeProvider` remaining available as a configurable alternative and `DisabledProvider` as the no-LLM fallback. This changes the *default selection*, made by whatever wires providers together (Feature 13) — it does not touch Feature 07's `LLMProvider` protocol, `ClaudeCodeProvider`'s own code, or its own default constructor argument (`model: str = "claude-haiku-4-5-20251001"` stays exactly as shipped).
 
 ## Scope
 
@@ -45,13 +45,23 @@ def suggest_ollama_budget(model: str, base_url: str = "http://localhost:11434") 
 
 Calls Ollama's `/api/show` for the configured model and returns a conservative token budget derived from its reported context window (leaving margin for prompt scaffolding and output), or `None` if introspection fails for any reason. Whoever configures `BudgetConfig` (a human, or later Feature 13's config loading) may call this to pick a sensible number for the `"ollama"`-routed categories — it is advisory, never required, and never called automatically inside `OllamaProvider.complete()`.
 
+### Clear configuration and error messages (new: LLM stages must be easy to set up and debug)
+
+Since `OllamaProvider` is now the default, a user without Ollama running (or without the configured model pulled) hits this path on their very first run, with no prior context on what went wrong — the failure modes must say exactly what to fix, not just degrade silently to `not_analyzed: llm_failed` the way any other provider failure does internally. Concretely:
+
+- **Missing `model`**: `OllamaProvider.__init__` raising for a missing `model` argument (already required, per Scope above) must produce a `TypeError` whose message names the `OLLAMA_MODEL` env var / config field as the fix — not Python's generic "missing argument" text alone. Wrap the call site (wherever Feature 13 constructs the default provider) to catch a missing config value and print an actionable message, e.g. `"No Ollama model configured — set OLLAMA_MODEL (e.g. qwen2.5:14b) or run with --no-llm."`
+- **Ollama not running (connection refused)**: `complete()` still returns `LLMCallResult(status="not_analyzed", reason="llm_failed")` per Feature 07's contract (unchanged) — but this feature adds a **first-call connectivity check**, run once per pipeline invocation (not per `complete()` call), that pings `/api/tags` before the first real request and, on failure, prints a single clear CLI-facing message before any stage results are reported: `"Could not reach Ollama at <base_url> — is it running? (ollama serve). Falling back to --no-llm behavior for this run."` This is a diagnostic print alongside the existing `not_analyzed` bookkeeping, not a new status value or a change to `LLMCallResult`.
+- **Model not pulled**: Ollama's own error response for an unknown model (HTTP 404 / `"model not found"` body) is detected specifically (string/status match on the response, not a generic exception catch) and surfaced as `"Model '<model>' not found in Ollama — run: ollama pull <model>."` alongside the same `not_analyzed: llm_failed` result.
+- All three messages go to the same place the CLI (06b/13) already reports stage failures/warnings — this feature does not invent a new output channel, just makes sure the message text for these specific, predictable failure modes is actionable instead of a bare exception string.
+
 ## Explicitly out of scope for this feature
 
 - Changing `LLMProvider`, `StructuredPrompt`, `LLMCallResult`, `BudgetConfig`, `BudgetTracker`, the cache, or the citation validator — all already shipped by Feature 07, reused as-is.
-- Changing the default provider — `ClaudeCodeProvider` remains whatever Feature 07/13's wiring currently selects by default; flipping the default to `OllamaProvider` (if ever wanted) is a separate, later decision, not part of this feature, and would touch Feature 13's config-loading defaults, not this one.
+- Changing `ClaudeCodeProvider`'s own code or its own default constructor argument — it stays exactly as shipped by Feature 07, still available as a configurable alternative to the new default.
 - Automatic cross-provider fallback (e.g. falling back from `OllamaProvider` to `ClaudeCodeProvider` on failure) — not decided anywhere and out of scope for the same reason Feature 07 already excludes it: exactly one provider is configured per run.
 - Any change to Feature 08/09/10 — they already consume `LLMProvider` generically and need no changes to work with a new implementation of it.
 - A hosted-API-key provider — unrelated to this feature.
+- A general-purpose error-reporting framework for the CLI — the three messages above are specific to Ollama's own predictable failure modes (not running, model missing, no model configured), reported through whatever mechanism 06b/13 already use for stage warnings; not a new logging/reporting system.
 
 ## Acceptance criteria
 
@@ -60,4 +70,5 @@ Calls Ollama's `/api/show` for the configured model and returns a conservative t
 - `model` has no hard-coded default anywhere in this feature's code — a test instantiating `OllamaProvider` without a `model` argument fails to construct (required argument), proving it can't silently fall back to an assumed tag.
 - The citation validator and schema structuring already shipped by Feature 07 are exercised, unmodified, against `OllamaProvider`'s output — a test proves a response citing an unknown fact id is rejected exactly as it already is for `ClaudeCodeProvider`, via the same code path (not a duplicated check).
 - `suggest_ollama_budget` returns a plausible integer against a fixture of a captured real `/api/show` response, and `None` (not an exception) when the request fails — and is not called anywhere inside `OllamaProvider.complete()` itself (grep/import check, or a test proving `complete()` makes no `/api/show` call).
+- Missing `model`, connection-refused, and model-not-found each produce the specific actionable message described above (tested against mocked responses/exceptions for each case), while `complete()`'s return value for all three stays `LLMCallResult(status="not_analyzed", reason="llm_failed")` — the messaging is additive diagnostic output, not a change to the result contract.
 - `uv run pytest` and `uv run ruff check .` pass.
