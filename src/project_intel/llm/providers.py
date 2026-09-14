@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import subprocess
+import typing
 import urllib.error
 import urllib.request
 from typing import Any, Protocol, TypeVar
@@ -80,6 +81,39 @@ class ClaudeCodeProvider:
             return LLMCallResult(status="not_analyzed", reason="llm_failed")
 
 
+def _type_to_schema(tp: Any) -> dict:
+    origin = getattr(tp, "__origin__", None)
+    if origin is list:
+        args = getattr(tp, "__args__", (object,))
+        return {"type": "array", "items": _type_to_schema(args[0])}
+    if origin is typing.Union:
+        non_none = [a for a in tp.__args__ if a is not type(None)]
+        return _type_to_schema(non_none[0]) if non_none else {}
+    if dataclasses.is_dataclass(tp):
+        return _dataclass_json_schema(tp)
+    return {"type": {str: "string", float: "number", int: "integer", bool: "boolean"}.get(tp, "string")}
+
+
+def _dataclass_json_schema(schema: type) -> dict:
+    """Build a JSON Schema object from a dataclass — passed to Ollama's format field."""
+    if not dataclasses.is_dataclass(schema):
+        return {"type": "object"}
+    try:
+        hints = typing.get_type_hints(schema)
+    except Exception:  # noqa: BLE001
+        hints = {f.name: f.type for f in dataclasses.fields(schema)}  # type: ignore[misc]
+    props = {}
+    required = []
+    for f in dataclasses.fields(schema):  # type: ignore[arg-type]
+        props[f.name] = _type_to_schema(hints.get(f.name, str))
+        if f.default is dataclasses.MISSING and f.default_factory is dataclasses.MISSING:  # type: ignore[misc]
+            required.append(f.name)
+    result: dict = {"type": "object", "properties": props}
+    if required:
+        result["required"] = required
+    return result
+
+
 def suggest_ollama_budget(model: str, base_url: str = "http://localhost:11434") -> int | None:
     """Return a conservative token budget from Ollama's /api/show, or None on failure."""
     try:
@@ -141,10 +175,11 @@ class OllamaProvider:
             f"{schema_desc}\n"
             "Respond with only valid JSON, no markdown, no explanation."
         )
+        fmt = _dataclass_json_schema(schema) if dataclasses.is_dataclass(schema) else "json"
         payload = json.dumps({
             "model": self._model,
             "prompt": full_prompt,
-            "format": "json",
+            "format": fmt,
             "stream": False,
         }).encode()
         try:
@@ -168,6 +203,8 @@ class OllamaProvider:
                     err_body = {}
                 if "not found" in err_body.get("error", "").lower():
                     print(f"Model '{self._model}' not found in Ollama — run: ollama pull {self._model}.")
+            return LLMCallResult(status="not_analyzed", reason="llm_failed")
+        except cattrs.errors.ClassValidationError:
             return LLMCallResult(status="not_analyzed", reason="llm_failed")
         except Exception:  # noqa: BLE001
             return LLMCallResult(status="not_analyzed", reason="llm_failed")
