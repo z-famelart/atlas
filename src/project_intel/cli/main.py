@@ -10,6 +10,7 @@ import click
 
 from ..discovery.scope import ScopeConfig
 from ..facts.store import FactStore
+from ..llm.providers import ClaudeCodeProvider, DisabledProvider
 from .registry import STAGE_REGISTRY
 from .types import PipelineContext
 
@@ -38,12 +39,19 @@ def main() -> None:
 
 @main.command()
 @click.argument("path", type=click.Path(exists=True, file_okay=False, path_type=Path))
-def analyze(path: Path) -> None:
-    """Run all analysis stages against a repository at PATH."""
+@click.option("--no-llm", is_flag=True, default=False, help="Disable LLM stages (architecture, domain, onboarding).")
+def analyze(path: Path, no_llm: bool) -> None:
+    """Run all analysis stages against a repository at PATH.
+
+    LLM stages are enabled by default and use the local Claude Code session
+    (no API key required). Pass --no-llm to skip them.
+    """
     repo_path = path.resolve()
     db_dir = repo_path / ".atlas-cache"
     db_dir.mkdir(parents=True, exist_ok=True)
     store = FactStore(db_dir / "facts.sqlite")
+
+    llm_provider = DisabledProvider() if no_llm else ClaudeCodeProvider()
 
     run_id = str(uuid.uuid4())
     ctx = PipelineContext(
@@ -51,6 +59,7 @@ def analyze(path: Path) -> None:
         repository_path=repo_path,
         run_id=run_id,
         scope=_DEFAULT_SCOPE,
+        llm_provider=llm_provider,
     )
 
     click.echo(f"run_id:    {run_id}")
