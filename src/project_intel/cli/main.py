@@ -74,15 +74,40 @@ def analyze(path: Path) -> None:
 
 @main.group()
 def facts() -> None:
-    """Inspect stored facts."""
+    """Read facts produced by a previous `analyze` run.
+
+    Facts are the normalized, evidence-linked observations stored in
+    <repo>/.project-intel/facts.sqlite after each `analyze` run.
+    Use `facts query` to filter and inspect them.
+    """
 
 
 @facts.command("query")
 @click.argument("path", type=click.Path(exists=True, file_okay=False, path_type=Path))
-@click.option("--type", "fact_type", default=None, help="Filter by fact type.")
-@click.option("--run-id", default=None, help="Filter by run ID.")
-@click.option("--provenance", default=None, help="Filter by provenance.")
-@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+@click.option(
+    "--type", "fact_type", default=None,
+    help=(
+        "Keep only facts of this type. "
+        "Common values: technology_detected, language_detected, git_churn, "
+        "centrality, hotspot_score, symbol_defined, calls, imports."
+    ),
+)
+@click.option(
+    "--run-id", default=None,
+    help=(
+        "Keep only facts from this specific analysis run. "
+        "The run ID is printed at the start of every `analyze` call."
+    ),
+)
+@click.option(
+    "--provenance", default=None,
+    help=(
+        "Keep only facts with this provenance. "
+        "Values: observed (raw tool output), computed (derived metric), "
+        "inferred (heuristic), hypothesis (LLM suggestion)."
+    ),
+)
+@click.option("--json", "as_json", is_flag=True, help="Emit full fact records as JSON instead of a summary table.")
 def facts_query(
     path: Path,
     fact_type: str | None,
@@ -90,7 +115,17 @@ def facts_query(
     provenance: str | None,
     as_json: bool,
 ) -> None:
-    """Query stored facts for the repository at PATH."""
+    """Print facts stored for the repository at PATH.
+
+    Without filters, lists every fact across all runs — usually thousands of
+    lines. Narrow down with --type and/or --run-id first.
+
+    \b
+    Examples:
+      project-intel facts query . --type technology_detected
+      project-intel facts query . --type hotspot_score --run-id <id>
+      project-intel facts query . --type git_churn --json
+    """
     import dataclasses
 
     db_path = path.resolve() / ".project-intel" / "facts.sqlite"
