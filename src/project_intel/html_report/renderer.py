@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import importlib.resources
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -64,6 +65,30 @@ def _esc(s: str) -> str:
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
 
+def _narrative(text: str) -> str:
+    return f'<p class="section-narrative">{_esc(text)}</p>\n'
+
+
+def _join_list(items: list[str], limit: int = 5) -> str:
+    """Join up to `limit` items; append '…' if truncated."""
+    shown = items[:limit]
+    suffix = ", …" if len(items) > limit else ""
+    return ", ".join(shown) + suffix
+
+
+# ---------------------------------------------------------------------------
+# Mermaid inline script
+# ---------------------------------------------------------------------------
+
+def _mermaid_script() -> str:
+    pkg = importlib.resources.files("project_intel.html_report")
+    js = (pkg / "_mermaid.min.js").read_text(encoding="utf-8")
+    return (
+        f'<script>{js}</script>\n'
+        '<script>mermaid.initialize({startOnLoad:true});mermaid.run();</script>'
+    )
+
+
 # ---------------------------------------------------------------------------
 # Section renderers
 # ---------------------------------------------------------------------------
@@ -96,7 +121,27 @@ def _render_executive_summary(store: FactStore, run_id: str) -> str:
         name = (f.value or {}).get("technology", f.subject.id)
         rows.append(_fact_row(f"Technology: {name}", f))
 
-    body = '<div class="fact-list">' + "".join(rows) + "</div>"
+    # Narrative
+    lang_names = [
+        (f.value or {}).get("language", f.subject.id) for f in langs
+    ]
+    tech_names = [
+        (f.value or {}).get("technology", f.subject.id) for f in techs
+    ]
+    parts: list[str] = []
+    if lang_names:
+        n = len(lang_names)
+        parts.append(
+            f"Atlas analyzed {n} language{'s' if n != 1 else ''}: {_join_list(lang_names)}."
+        )
+    if tech_names:
+        n = len(tech_names)
+        parts.append(
+            f"Detected {n} {'technologies' if n != 1 else 'technology'}: {_join_list(tech_names)}."
+        )
+    prose = _narrative(" ".join(parts)) if parts else ""
+
+    body = prose + '<div class="fact-list">' + "".join(rows) + "</div>"
     return _section("Executive Summary", body, "executive-summary")
 
 
@@ -108,10 +153,17 @@ def _render_system_map(store: FactStore, run_id: str) -> str:
     top = sorted(centrality, key=lambda f: float((f.value or {}).get("score", 0)), reverse=True)[:20]
     mermaid = "graph LR\n" + "\n".join(f"  {_esc(f.subject.id.split('/')[-1])}[{_esc(f.subject.id.split('/')[-1])}]" for f in top[:10])
     rows = [_fact_row(f.subject.id, f) for f in top]
+
+    top_file = top[0].subject.id if top else None
+    prose = _narrative(
+        f"{len(centrality)} file{'s' if len(centrality) != 1 else ''} ranked by centrality."
+        + (f" Top file: {top_file}." if top_file else "")
+    )
+
     body = (
-        f'<pre class="mermaid">{mermaid}</pre>'
-        f'<p class="mermaid-hint">Load mermaid.js locally to render diagram.</p>'
-        f'<div class="fact-list">{"".join(rows)}</div>'
+        prose
+        + f'<pre class="mermaid">{mermaid}</pre>'
+        + f'<div class="fact-list">{"".join(rows)}</div>'
     )
     return _section("System Map", body, "system-map")
 
@@ -122,10 +174,24 @@ def _render_architecture(store: FactStore, run_id: str) -> str:
         return _section("Architecture", _not_analyzed("architecture_hypothesis"), "architecture")
 
     rows = []
+    prose_parts: list[str] = []
     for f in facts:
         label = (f.value or {}).get("pattern", f.subject.id)
         rows.append(_fact_row(str(label), f))
-    body = '<div class="fact-list">' + "".join(rows) + "</div>"
+        desc = (f.value or {}).get("pattern_description", "")
+        if desc:
+            prose_parts.append(str(desc))
+
+    if not prose_parts:
+        # Fallback: pattern + confidence
+        for f in facts:
+            pattern = (f.value or {}).get("pattern", f.subject.id)
+            prose_parts.append(
+                f"Atlas identified the {pattern} pattern with {f.confidence:.0%} confidence."
+            )
+
+    prose = _narrative(" ".join(prose_parts)) if prose_parts else ""
+    body = prose + '<div class="fact-list">' + "".join(rows) + "</div>"
     return _section("Architecture", body, "architecture")
 
 
@@ -141,7 +207,16 @@ def _render_code_map(store: FactStore, run_id: str) -> str:
         rows.append(_fact_row(label, f))
     for f in symbols[:30]:
         rows.append(_fact_row(f.subject.id, f))
-    body = '<div class="fact-list">' + "".join(rows) + "</div>"
+
+    n_sym = len(symbols)
+    parts: list[str] = []
+    if n_sym:
+        parts.append(f"{n_sym} symbol{'s' if n_sym != 1 else ''} defined.")
+    if communities:
+        parts.append(f"{len(communities)} community cluster{'s' if len(communities) != 1 else ''} detected.")
+    prose = _narrative(" ".join(parts)) if parts else ""
+
+    body = prose + '<div class="fact-list">' + "".join(rows) + "</div>"
     return _section("Code Map", body, "code-map")
 
 
@@ -158,7 +233,16 @@ def _render_hotspots(store: FactStore, run_id: str) -> str:
         )
         for f in top
     ]
-    body = '<div class="fact-list">' + "".join(rows) + "</div>"
+
+    top_file = top[0].subject.id
+    top_score = float((top[0].value or {}).get("score", 0))
+    n = len(facts)
+    prose = _narrative(
+        f"The {n} highest-scoring file{'s' if n != 1 else ''} are ranked by hotspot score."
+        f" Top hotspot: {top_file} ({top_score:.2f})."
+    )
+
+    body = prose + '<div class="fact-list">' + "".join(rows) + "</div>"
     return _section("Hotspots", body, "hotspots")
 
 
@@ -175,7 +259,22 @@ def _render_domain(store: FactStore, run_id: str) -> str:
     for f in workflows:
         name = (f.value or {}).get("name", f.subject.id)
         rows.append(_fact_row(f"Workflow: {name}", f))
-    body = '<div class="fact-list">' + "".join(rows) + "</div>"
+
+    # Narrative: first 3 concept descriptions
+    concept_descs: list[str] = []
+    for f in concepts[:3]:
+        name = (f.value or {}).get("name", f.subject.id)
+        desc = (f.value or {}).get("description", "")
+        concept_descs.append(f"{name}" + (f" ({desc})" if desc else ""))
+    prose_parts: list[str] = []
+    if concept_descs:
+        prose_parts.append(f"Key concepts: {', '.join(concept_descs)}.")
+    if workflows:
+        wf_names = [(f.value or {}).get("name", f.subject.id) for f in workflows[:3]]
+        prose_parts.append(f"Workflows: {', '.join(wf_names)}.")
+    prose = _narrative(" ".join(prose_parts)) if prose_parts else ""
+
+    body = prose + '<div class="fact-list">' + "".join(rows) + "</div>"
     return _section("Domain Understanding", body, "domain-understanding")
 
 
@@ -194,7 +293,17 @@ def _render_git_evolution(store: FactStore, run_id: str) -> str:
     for f in cochange[:10]:
         label = f"Co-change: {f.subject.id} ↔ {f.object.id if f.object else '?'}"
         rows.append(_fact_row(label, f))
-    body = '<div class="fact-list">' + "".join(rows) + "</div>"
+
+    parts: list[str] = []
+    if churn:
+        parts.append(f"{len(churn)} file{'s' if len(churn) != 1 else ''} tracked in git history.")
+    if top_churn:
+        top_file = top_churn[0].subject.id
+        top_commits = (top_churn[0].value or {}).get("commits", "?")
+        parts.append(f"Highest-churn file: {top_file} ({top_commits} commits).")
+    prose = _narrative(" ".join(parts)) if parts else ""
+
+    body = prose + '<div class="fact-list">' + "".join(rows) + "</div>"
     return _section("Git Evolution", body, "git-evolution")
 
 
@@ -204,8 +313,36 @@ def _render_risks(store: FactStore, run_id: str) -> str:
         return _section("Risks / Anomalies", _not_analyzed("dependency_cycle"), "risks-anomalies")
 
     rows = [_fact_row(f"Dependency cycle: {f.subject.id}", f) for f in cycles]
-    body = '<div class="fact-list">' + "".join(rows) + "</div>"
+    n = len(cycles)
+    prose = _narrative(f"{n} dependency cycle{'s' if n != 1 else ''} detected.")
+
+    body = prose + '<div class="fact-list">' + "".join(rows) + "</div>"
     return _section("Risks / Anomalies", body, "risks-anomalies")
+
+
+def _render_onboarding(store: FactStore, run_id: str) -> str:
+    paths = list(store.query_facts(type="onboarding_path", run_id=run_id))
+    if not paths:
+        return _not_analyzed_section("Onboarding Path", "onboarding-path")
+
+    rows = [_fact_row(f.subject.id, f) for f in paths]
+    prose_parts: list[str] = []
+    for f in paths[:1]:
+        v = f.value or {}
+        rw_desc = v.get("recommended_workflow", {}).get("description", "")
+        if rw_desc:
+            prose_parts.append(str(rw_desc))
+        tb = v.get("time_boxed_understanding", {})
+        thirty = tb.get("thirty_minutes", "")
+        two_hrs = tb.get("two_hours", "")
+        if thirty:
+            prose_parts.append(f"First 30 minutes: {thirty}")
+        if two_hrs:
+            prose_parts.append(f"First 2 hours: {two_hrs}")
+    prose = _narrative(" ".join(prose_parts)) if prose_parts else ""
+
+    body = prose + '<div class="fact-list">' + "".join(rows) + "</div>"
+    return _section("Onboarding Path", body, "onboarding-path")
 
 
 def _render_glossary(store: FactStore, run_id: str) -> str:
@@ -246,6 +383,7 @@ nav a:hover { color: #fff; }
 main { max-width: 1100px; margin: 0 auto; padding: 1rem 1.5rem; }
 section { margin-bottom: 2rem; border-bottom: 1px solid #e0e0e0; padding-bottom: 1rem; }
 h2 { color: #1a237e; font-size: 1.2rem; margin-bottom: 0.5rem; }
+.section-narrative { color: #444; font-size: 0.95rem; margin: 0 0 0.75rem 0; line-height: 1.5; }
 .fact-list { display: flex; flex-direction: column; gap: 0.3rem; }
 .fact-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.6rem; background: #fff; border: 1px solid #e0e0e0; border-radius: 4px; cursor: pointer; flex-wrap: wrap; }
 .fact-row:hover { background: #e8eaf6; }
@@ -254,7 +392,6 @@ h2 { color: #1a237e; font-size: 1.2rem; margin-bottom: 0.5rem; }
 .conf-bar { width: 60px; height: 6px; background: #e0e0e0; border-radius: 3px; overflow: hidden; flex-shrink: 0; }
 .conf-fill { height: 100%; background: #42a5f5; }
 .not-analyzed { color: #888; font-style: italic; }
-.mermaid-hint { color: #aaa; font-size: 0.8rem; }
 pre.mermaid { background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; padding: 1rem; font-size: 0.8rem; overflow-x: auto; }
 #evidence-panel { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: #263238; color: #eceff1; padding: 1rem; max-height: 40vh; overflow-y: auto; z-index: 200; font-size: 0.85rem; }
 #evidence-panel pre { margin: 0; white-space: pre-wrap; }
@@ -329,10 +466,12 @@ def generate_report(store: FactStore, run_id: str, output_dir: Path | None = Non
         _not_analyzed_section("Tests", "tests"),
         _render_git_evolution(store, run_id),
         _render_risks(store, run_id),
-        _not_analyzed_section("Onboarding Path", "onboarding-path"),
+        _render_onboarding(store, run_id),
         _render_glossary(store, run_id),
         _render_evidence(store, run_id),
     ])
+
+    mermaid_script = _mermaid_script()
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -344,6 +483,7 @@ def generate_report(store: FactStore, run_id: str, output_dir: Path | None = Non
 <meta name="atlas-repository" content="{_esc(repo_path)}">
 <title>Atlas Report — {_esc(run_id)}</title>
 <style>{_CSS}</style>
+{mermaid_script}
 </head>
 <body>
 <nav>
