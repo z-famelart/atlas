@@ -11,6 +11,7 @@ The repo has two parts: the specs (below) and a Python implementation being buil
 - **Linear history only** — never use `git merge`; always rebase branches before integrating (`git rebase main` then `git merge --ff-only`).
 - Worktrees are fine for parallel work, but the branch must be rebased on top of `main` before merging, so the result is a straight line of commits.
 - If fast-forward is impossible (histories diverged), fix it with `git rebase`, not `git merge`.
+- **Conventional Commits** — all commit messages must follow the [Conventional Commits](https://www.conventionalcommits.org/) spec: `<type>(<scope>): <description>`. Types: `feat`, `fix`, `docs`, `refactor`, `chore`, `test`, `perf`. Scope is optional but encouraged (e.g. `feat(discovery):`, `fix(adapters):`).
 
 ## Commands
 
