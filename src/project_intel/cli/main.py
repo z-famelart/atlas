@@ -179,5 +179,14 @@ def facts_query(
         for f in stored_facts:
             click.echo(f"{f.type:<30} {f.subject.type.value:<12} {f.subject.id}")
 
+@main.command("mcp-serve")
+@click.argument("db_path", default=".atlas/facts.sqlite", type=click.Path())
+@click.option("--port", default=8765, type=int, help="Port (reserved for future SSE transport).")
+def mcp_serve(db_path: str, port: int) -> None:
+    """Start the MCP server for AI agent access."""
+    from ..mcp_server import run_server
+    run_server(db_path, port=port)
+
+
 if __name__ == "__main__":
     main()
