@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atlas Synthesis — shopcore (example)</title>
+<style>
+  /* Base */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    background: #f8f9fa;
+    color: #212529;
+    padding: 0 16px;
+  }
+
+  /* Layout */
+  .page { max-width: 860px; margin: 0 auto; padding: 32px 0 64px; }
+
+  /* Header */
+  .page-header { margin-bottom: 32px; border-bottom: 2px solid #dee2e6; padding-bottom: 16px; }
+  .page-header h1 { font-size: 1.5rem; font-weight: 700; }
+  .page-header .meta { color: #6c757d; font-size: 0.85rem; margin-top: 4px; }
+  .page-header .disclaimer {
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: #e8f4fd;
+    border-left: 3px solid #0d6efd;
+    font-size: 0.82rem;
+    color: #0a58ca;
+    border-radius: 0 4px 4px 0;
+  }
+
+  /* Section headings */
+  h2 {
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin: 28px 0 12px;
+    color: #343a40;
+  }
+  h3 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin: 20px 0 8px;
+    color: #495057;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  /* Provenance badges — same CSS as Feature 11/11b */
+  .prov-badge {
+    color: #fff;
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-size: 0.75rem;
+    white-space: nowrap;
+    display: inline-block;
+    vertical-align: middle;
+  }
+  .prov-badge.observed  { background: #2e7d32; }
+  .prov-badge.computed  { background: #1565c0; }
+  .prov-badge.hypothesis { background: #6a1b9a; }
+
+  /* Clickable fact rows with evidence */
+  .fact-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .fact-row:hover { background: #e9ecef; }
+  .fact-row.active { background: #dbe4ff; }
+  .fact-row .label { flex: 1; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+  th { text-align: left; padding: 6px 10px; background: #e9ecef; font-weight: 600; border-bottom: 2px solid #dee2e6; }
+  td { padding: 6px 10px; border-bottom: 1px solid #dee2e6; }
+  tr:last-child td { border-bottom: none; }
+  .num { font-variant-numeric: tabular-nums; text-align: right; }
+
+  /* Evidence panel */
+  #evidence-panel {
+    margin-top: 12px;
+    padding: 12px 16px;
+    background: #fff;
+    border: 1px solid #adb5bd;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    line-height: 1.7;
+  }
+  #evidence-panel[hidden] { display: none; }
+  #evidence-panel .ev-close {
+    float: right;
+    cursor: pointer;
+    color: #6c757d;
+    font-size: 1rem;
+    line-height: 1;
+    margin-left: 8px;
+  }
+  #evidence-panel strong { color: #495057; }
+
+  /* Findings section */
+  .findings-section {
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 24px;
+  }
+  .findings-section > h2:first-child { margin-top: 0; }
+
+  /* Confidence bar */
+  .conf-bar {
+    display: inline-block;
+    width: 60px;
+    height: 8px;
+    background: #dee2e6;
+    border-radius: 4px;
+    vertical-align: middle;
+    overflow: hidden;
+    margin-left: 4px;
+  }
+  .conf-bar-fill { height: 100%; background: #1565c0; border-radius: 4px; }
+
+  /* Architecture badge */
+  .arch-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 10px;
+    border: 1px solid #dee2e6;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    background: #fff;
+    margin-right: 6px;
+    margin-bottom: 6px;
+  }
+
+  /* Domain concepts */
+  .concept-chip {
+    display: inline-block;
+    padding: 2px 10px;
+    background: #e3f2fd;
+    color: #0d47a1;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    margin: 2px 4px 2px 0;
+  }
+
+  /* Onboarding path */
+  .path-list { list-style: none; counter-reset: path-counter; }
+  .path-list li {
+    counter-increment: path-counter;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 5px 0;
+  }
+  .path-list li::before {
+    content: counter(path-counter);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    background: #1565c0;
+    color: #fff;
+    border-radius: 50%;
+    font-size: 0.7rem;
+    font-weight: 700;
+    flex-shrink: 0;
+    position: relative;
+    top: 1px;
+  }
+  .path-list code { font-size: 0.85rem; background: #e9ecef; padding: 1px 5px; border-radius: 3px; }
+
+  /* Not-analyzed notice */
+  .not-analyzed {
+    padding: 6px 10px;
+    background: #fff3e0;
+    border-left: 3px solid #ef6c00;
+    font-size: 0.82rem;
+    color: #bf360c;
+    border-radius: 0 4px 4px 0;
+    margin: 8px 0;
+  }
+
+  /* "My read" section — visually distinct */
+  .my-read-section {
+    background: #f0f4ff;
+    border: 1px solid #c5cae9;
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 24px;
+  }
+  .my-read-section > h2:first-child {
+    margin-top: 0;
+    color: #283593;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .my-read-section > h2:first-child::after {
+    content: "agent's interpretation — no provenance";
+    font-size: 0.7rem;
+    font-weight: 400;
+    color: #7986cb;
+    letter-spacing: 0.02em;
+    border: 1px solid #9fa8da;
+    border-radius: 3px;
+    padding: 1px 6px;
+    white-space: nowrap;
+  }
+  .my-read-section p { margin-bottom: 12px; color: #1a237e; line-height: 1.75; }
+  .my-read-section p:last-child { margin-bottom: 0; }
+  .my-read-section strong { color: #283593; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="page-header">
+    <h1>Atlas Synthesis — <code>shopcore</code></h1>
+    <div class="meta">Generated by atlas-synthesis agent &bull; Run: 2024-11-14T09:22:04Z &bull; Atlas run_id: run_abc123</div>
+    <div class="disclaimer">
+      <strong>Note:</strong> The full standalone report is available at <code>atlas-report.html</code> (Feature 11/11b).
+      This synthesis is a complementary, agent-curated alternative — not a replacement.
+    </div>
+  </header>
+
+  <!-- ─── SECTION 1: Atlas findings ───────────────────────────── -->
+  <section class="findings-section">
+    <h2>Atlas findings</h2>
+    <p style="font-size:0.82rem;color:#6c757d;margin-bottom:16px;">
+      Relayed directly from MCP — provenance as returned by Atlas.
+      Click any highlighted row to see its evidence.
+    </p>
+
+    <h3>Hotspots</h3>
+    <p style="font-size:0.82rem;color:#6c757d;margin:0 0 10px;">Top files by combined churn + complexity score. Source: <code>get_hotspots(top_n=10)</code></p>
+    <table>
+      <thead>
+        <tr>
+          <th>File</th>
+          <th class="num">Complexity</th>
+          <th class="num">Churn (commits)</th>
+          <th class="num">Score</th>
+          <th>Provenance</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <div class="fact-row active"
+                 data-evidence='{"fact_id":"hs_001","source":"git log + radon","detail":"checkout.py: cyclomatic complexity 42, 18 commits in last 90 days, hotspot score 0.87"}'
+                 onclick="showEvidence(this)">
+              <span class="label"><code>checkout.py</code></span>
+            </div>
+          </td>
+          <td class="num">42</td>
+          <td class="num">18</td>
+          <td class="num"><strong>0.87</strong></td>
+          <td><span class="prov-badge computed">computed</span></td>
+        </tr>
+        <tr>
+          <td>
+            <div class="fact-row"
+                 data-evidence='{"fact_id":"hs_002","source":"git log + radon","detail":"orders/models.py: cyclomatic complexity 31, 14 commits in last 90 days, hotspot score 0.72"}'
+                 onclick="showEvidence(this)">
+              <span class="label"><code>orders/models.py</code></span>
+            </div>
+          </td>
+          <td class="num">31</td>
+          <td class="num">14</td>
+          <td class="num">0.72</td>
+          <td><span class="prov-badge computed">computed</span></td>
+        </tr>
+        <tr>
+          <td>
+            <div class="fact-row"
+                 data-evidence='{"fact_id":"hs_003","source":"git log + radon","detail":"payments/gateway.py: cyclomatic complexity 27, 9 commits in last 90 days, hotspot score 0.58"}'
+                 onclick="showEvidence(this)">
+              <span class="label"><code>payments/gateway.py</code></span>
+            </div>
+          </td>
+          <td class="num">27</td>
+          <td class="num">9</td>
+          <td class="num">0.58</td>
+          <td><span class="prov-badge computed">computed</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div id="evidence-panel" hidden>
+      <span class="ev-close" onclick="document.getElementById('evidence-panel').hidden=true">✕</span>
+      <strong>Evidence</strong><br>
+      <span id="ev-content"></span>
+    </div>
+
+    <h3>Architecture</h3>
+    <p style="font-size:0.82rem;color:#6c757d;margin:0 0 10px;">Source: <code>get_component()</code> + architecture analysis</p>
+    <div>
+      <span class="arch-badge">
+        <span class="prov-badge hypothesis">hypothesis</span>
+        Layered (MVC)
+        <span class="conf-bar" title="72% confidence"><span class="conf-bar-fill" style="width:72%"></span></span>
+        72%
+      </span>
+    </div>
+    <p style="font-size:0.82rem;color:#6c757d;margin-top:8px;">
+      Atlas identified a layered pattern: <code>views/</code> → <code>orders/</code> (logic) → <code>payments/</code> (integration).
+      Confidence 72% — classified as hypothesis, not observed structure.
+    </p>
+
+    <h3>Domain concepts</h3>
+    <p style="font-size:0.82rem;color:#6c757d;margin:0 0 8px;">Source: <code>find_workflow(query="checkout")</code> + domain analysis</p>
+    <div>
+      <span class="concept-chip">Order</span>
+      <span class="concept-chip">Payment</span>
+      <span class="concept-chip">Cart</span>
+      <span class="concept-chip">checkout flow</span>
+    </div>
+    <p style="font-size:0.82rem;color:#6c757d;margin-top:8px;">
+      Workflow "checkout flow": <code>cart → checkout.py → orders/models.py → payments/gateway.py</code>
+      <span class="prov-badge hypothesis">hypothesis</span>
+    </p>
+
+    <h3>Onboarding path</h3>
+    <p style="font-size:0.82rem;color:#6c757d;margin:0 0 8px;">Source: <code>where_to_start()</code> &mdash; <span class="prov-badge computed">computed</span></p>
+    <ol class="path-list">
+      <li><code>checkout.py</code> — highest hotspot score; central to the checkout flow</li>
+      <li><code>orders/models.py</code> — core domain model, referenced by most business logic</li>
+      <li><code>views/cart.py</code> — entry point into the checkout flow</li>
+    </ol>
+    <p style="font-size:0.82rem;color:#e65100;margin-top:10px;">
+      ⚠ Atlas recommends deferring <code>payments/</code> initially — high integration complexity, likely to distract early exploration.
+    </p>
+
+    <h3>Not-analyzed gaps</h3>
+    <div class="not-analyzed">
+      <code>find_workflow(query="refund")</code> returned <strong>not_analyzed</strong> — refund flow has not been extracted for this run.
+    </div>
+    <div class="not-analyzed">
+      Infrastructure/CI dependency graph: not available in this run (no Terraform/K8s detected).
+    </div>
+
+  </section>
+
+  <!-- ─── SECTION 2: My read ───────────────────────────────────── -->
+  <section class="my-read-section">
+    <h2>My read</h2>
+
+    <p>
+      The numbers tell a consistent story: <strong>checkout.py is the real problem file</strong>, not payments.
+      A complexity of 42 combined with 18 commits in 90 days means this file is both hard to understand
+      and actively changing — the worst combination for a newcomer. The architecture hypothesis (layered,
+      72% confidence) and the churn data reinforce each other: the "orchestration" layer is doing too
+      much, which explains why it keeps getting touched. I would treat the 72% confidence as sufficient
+      signal — it's consistent with what the domain concepts and workflow suggest.
+    </p>
+
+    <p>
+      Atlas's advice to avoid <code>payments/gateway.py</code> early is sound but worth unpacking.
+      The lower hotspot score (0.58) doesn't mean it's simpler — it means it changes less, which for
+      a payment integration is actually reassuring. The risk there is brittleness, not churn. I'd
+      read it once early to understand the integration contract, then leave it alone unless the task
+      specifically touches payments. The <em>real</em> onboarding risk is <code>orders/models.py</code>:
+      a complexity of 31 with 14 recent commits suggests the domain model is still in flux, which
+      means any mental model you build of it today may be partially wrong next sprint.
+    </p>
+
+    <p>
+      The missing refund-flow analysis is a meaningful gap. Given that checkout and orders are both
+      hot, refund paths likely run through the same files — understanding <code>checkout.py</code>
+      thoroughly is probably the fastest way to infer the refund flow even without Atlas having
+      extracted it explicitly. I'd prioritize that read before asking anyone to walk you through the
+      refund path.
+    </p>
+  </section>
+
+</div>
+
+<script>
+function showEvidence(el) {
+  // Deactivate all rows
+  document.querySelectorAll('.fact-row').forEach(function(r) { r.classList.remove('active'); });
+  el.classList.add('active');
+
+  var ev = JSON.parse(el.getAttribute('data-evidence'));
+  document.getElementById('ev-content').innerHTML =
+    '<strong>fact_id:</strong> ' + ev.fact_id + '<br>' +
+    '<strong>source:</strong> ' + ev.source + '<br>' +
+    '<strong>detail:</strong> ' + (ev.detail || '—');
+  document.getElementById('evidence-panel').hidden = false;
+
+  // Scroll panel into view if needed
+  document.getElementById('evidence-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+</script>
+</body>
+</html>
