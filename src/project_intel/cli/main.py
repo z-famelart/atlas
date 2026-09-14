@@ -1,4 +1,4 @@
-"""CLI entry point — project-intel analyze / facts query."""
+"""CLI entry point — atlas analyze / facts query."""
 
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ def main() -> None:
 def analyze(path: Path) -> None:
     """Run all analysis stages against a repository at PATH."""
     repo_path = path.resolve()
-    db_dir = repo_path / ".project-intel"
+    db_dir = repo_path / ".atlas-cache"
     db_dir.mkdir(parents=True, exist_ok=True)
     store = FactStore(db_dir / "facts.sqlite")
 
@@ -77,7 +77,7 @@ def facts() -> None:
     """Read facts produced by a previous `analyze` run.
 
     Facts are the normalized, evidence-linked observations stored in
-    <repo>/.project-intel/facts.sqlite after each `analyze` run.
+    <repo>/.atlas-cache/facts.sqlite after each `analyze` run.
     Use `facts query` to filter and inspect them.
     """
 
@@ -122,13 +122,13 @@ def facts_query(
 
     \b
     Examples:
-      project-intel facts query . --type technology_detected
-      project-intel facts query . --type hotspot_score --run-id <id>
-      project-intel facts query . --type git_churn --json
+      atlas facts query . --type technology_detected
+      atlas facts query . --type hotspot_score --run-id <id>
+      atlas facts query . --type git_churn --json
     """
     import dataclasses
 
-    db_path = path.resolve() / ".project-intel" / "facts.sqlite"
+    db_path = path.resolve() / ".atlas-cache" / "facts.sqlite"
     if not db_path.exists():
         raise click.ClickException(f"No facts database at {db_path}")
 
