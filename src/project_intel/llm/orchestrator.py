@@ -6,6 +6,7 @@ This is the entry point synthesis features use; they never call a raw provider d
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,7 @@ from .providers import LLMProvider
 from .types import BudgetConfig, LLMCallResult, StructuredPrompt
 
 _CONVERTER = cattrs.Converter()
+_log = logging.getLogger(__name__)
 
 
 class LLMOrchestrator:
@@ -72,13 +74,19 @@ class LLMOrchestrator:
                 pass  # stale/corrupt cache entry — fall through to provider
 
         # 3. Provider call
+        _log.info("LLM call provider=%s category=%s tokens~%d",
+                  self._provider.provider_id, prompt.category, prompt.estimated_input_tokens)
         result = self._provider.complete(prompt, schema)
         if result.status != "ok" or result.value is None:
+            _log.warning("LLM call failed provider=%s category=%s reason=%s",
+                         self._provider.provider_id, prompt.category, result.reason)
             return result
 
         # 4. Citation validation
-        valid, _ = validate_citations(result.value, self._store)
+        valid, bad_ids = validate_citations(result.value, self._store)
         if not valid:
+            _log.warning("Citation validation failed provider=%s category=%s invalid_ids=%s",
+                         self._provider.provider_id, prompt.category, bad_ids)
             return LLMCallResult(status="not_analyzed", reason="llm_failed")
 
         # 5. Store in cache (serialize the value back to JSON for storage)
