@@ -151,7 +151,13 @@ def _render_hotspots(store: FactStore, run_id: str) -> str:
         return _section("Hotspots", _not_analyzed("hotspot_score"), "hotspots")
 
     top = sorted(facts, key=lambda f: float((f.value or {}).get("score", 0)), reverse=True)[:30]
-    rows = [_fact_row(f"{f.subject.id} (score: {(f.value or {}).get('score', '?'):.2f})", f) for f in top]
+    rows = [
+        _fact_row(
+            f"{f.subject.id} (score: {float((f.value or {}).get('score', 0)):.2f})",
+            f,
+        )
+        for f in top
+    ]
     body = '<div class="fact-list">' + "".join(rows) + "</div>"
     return _section("Hotspots", body, "hotspots")
 
