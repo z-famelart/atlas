@@ -55,6 +55,10 @@ The framework must make it possible to test an adapter's `normalize()` function 
 
 Each adapter carries its own semantic version, independent of the wrapped tool's version, so the normalized-output format can evolve without being tied to upstream tool releases. Store this as part of the manifest and stamp it onto every `Fact.source_analyzer` reference (e.g. `"complexity-radon@1.0.0"`) so facts remain attributable to the exact normalization logic that produced them.
 
+### Logging (per [README](README.md#logging-a-convention-every-feature-follows)'s logging convention)
+
+The adapter executor logs via `logging.getLogger(__name__)`: `INFO` on invocation start/end (adapter name, target), `WARNING` on any `failed`/`skipped:*` result with the underlying reason (subprocess exit code/stderr, missing binary, version mismatch), `DEBUG` with the exact command invoked and raw pre-normalization output. Every concrete adapter built on this framework inherits this for free — it does not add its own separate logging.
+
 ## Explicitly out of scope for this feature
 
 - No concrete adapters (language detection, Git, graph, complexity, IaC/CI, etc.) — each is its own later feature.

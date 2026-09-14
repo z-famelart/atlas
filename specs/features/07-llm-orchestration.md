@@ -53,6 +53,10 @@ Cache key = hash(prompt content + schema/prompt version + provider/model identif
 
 A token budget is attached per call-site category (not global-only), with a running total tracked per analysis run. Exceeding budget causes graceful degradation (the call is skipped, recorded as `not_analyzed: budget_exceeded`) — never a hard crash of the pipeline.
 
+### Logging (per [README](README.md#logging-a-convention-every-feature-follows)'s logging convention)
+
+`ClaudeCodeProvider` and any other `LLMProvider` implementation logs via `logging.getLogger(__name__)`: `WARNING` on any call that ends in `not_analyzed` (`provider_id`, model, prompt category, and the underlying error — subprocess exit code/stderr for `ClaudeCodeProvider`), `INFO` on call start/end and cache hits, `DEBUG` with the full prompt and raw response. This is a `logger.<level>(...)` call added inside `complete()` before it returns — it does not change `LLMCallResult`'s shape or any other type this feature already shipped.
+
 ## Explicitly out of scope for this feature
 
 - Any real prompt content for architecture/domain/onboarding synthesis — later features.

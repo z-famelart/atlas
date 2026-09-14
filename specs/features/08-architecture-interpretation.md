@@ -40,6 +40,10 @@ Uses Feature 07's multi-hypothesis schema shape directly — the response schema
 
 Entirely delegated to Feature 07: this feature supplies the fact ids available for citation as part of the bounded input; Feature 07's citation validator rejects any response citing ids outside that set. This feature adds no separate validation logic of its own.
 
+### Logging (per [README](README.md#logging-a-convention-every-feature-follows)'s logging convention)
+
+Nothing new to build here beyond calling Feature 07's `LLMProvider` — its logging (see 07's own addendum) already covers the call this feature makes. This feature's own logger (`logging.getLogger(__name__)`) only adds `INFO` on stage start/end and `WARNING` if the stage as a whole degrades to `not_analyzed` (LLM disabled or failed), consistent with the `STAGE`'s existing status vocabulary.
+
 ## CLI stage registration (Feature 06b)
 
 This feature exposes a module-level `STAGE: Stage` object (name `"architecture"`) per [06b](06b-minimal-cli.md)'s contract. Its `run()` reads `PipelineContext.llm_provider` — if `None` (LLM disabled, per Feature 07's no-op provider), the stage reports `status=skipped` with the same `not_analyzed: llm_failed` outcome its own spec already requires for a disabled/failed LLM, rather than erroring. Registering it is one import + one entry in `STAGE_REGISTRY`, placed after `code_graph` since it reads that stage's output.

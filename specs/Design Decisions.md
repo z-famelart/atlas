@@ -577,7 +577,7 @@ Décidé (résolu 2026-09-14). Oui — **Ollama** (`http://localhost:11434` par 
 Décidé — oui, chaque catégorie d'analyzer (section B-K) doit être activable/désactivable en configuration indépendamment des autres.
 
 **170. Comment journalise-t-on les appels externes ?**
-Proposition. Log structuré de chaque appel sortant (connector API, appel LLM) avec horodatage, destination, volume de données (pas le contenu brut si sensible), consultable par l'utilisateur pour audit — cohérent avec l'exigence de transparence du principe evidence-first appliqué à l'outil lui-même.
+Décidé (résolu 2026-09-14, étendu le même jour suite à la demande explicite que ça couvre toute l'application, pas seulement le LLM — suite au dogfooding réel de l'outil : `atlas analyze` sur son propre repository et sur un projet plus large a révélé des échecs LLM sans information exploitable). Logging structuré **across the app** : chaque feature qui fait un appel externe/LLM porte son propre logger (`logging.getLogger(__name__)`) et journalise selon la même convention à trois niveaux — voir [`specs/features/README.md`](features/README.md#logging-a-convention-every-feature-follows) pour le détail, applicable rétroactivement aux Features 02, 07, 07b, 08 déjà livrées (addition interne, sans changement d'interface). Niveau par défaut `WARNING` — un échec d'appel externe (adapter ou LLM) est toujours journalisé à ce niveau avec au minimum : composant, cible (nom d'adapter ou `provider_id`/modèle), et le détail de l'erreur sous-jacente (type d'exception, message, ou statut HTTP) — jamais juste `not_analyzed: llm_failed` sans plus de contexte. Pas de contenu brut potentiellement sensible dans les logs (cohérent avec l'exigence de transparence evidence-first appliquée à l'outil lui-même). La **Feature 13** ne fait que configurer (niveau, handler) et afficher ce que chaque composant journalise déjà — elle n'ajoute pas les logs elle-même ; résout aussi Q179 pour le détail niveau DEBUG.
 
 ---
 
@@ -593,7 +593,7 @@ Proposition. Un fichier de configuration par `Project` (repositories, scope, ana
 Décidé — les deux, en couches : auto-discovery maximale par défaut (Q11-20) pour la détection technique, configuration explicite obligatoire uniquement pour ce qui ne peut pas être déduit de façon fiable (scope multi-repository/système, credentials, budget) — cohérent avec Q9.
 
 **174. Comment affiche-t-on la progression ?**
-Proposition. Sortie CLI progressive par étape du pipeline (Q7 de l'architecture conceptuelle : discovery → analyzers → normalisation → calculs → LLM → rapport), avec statut par analyzer individuel (running/done/failed/skipped).
+Décidé (résolu 2026-09-14, étendu le même jour : la CLI entière doit être interactive, avec un timer et un spinner par étape en cours). Sortie CLI progressive par étape du pipeline (Q7 de l'architecture conceptuelle : discovery → analyzers → normalisation → calculs → LLM → rapport), avec statut par analyzer individuel (running/done/failed/skipped) affiché au fur et à mesure — pas seulement dans le résumé final. Sur un terminal interactif (TTY) : affichage **live** via `rich` (nouvelle dépendance, justifiée — spinner et redessin en place ne sont pas raisonnables avec `click`/stdlib seuls) — chaque stage de `STAGE_REGISTRY` apparaît dès son lancement avec un spinner animé et un timer d'écoulement qui s'incrémente pendant son exécution, puis se fige avec un statut (✓/✗/⊘), la durée finale et le nombre de facts produits. Hors TTY (CI, sortie redirigée) ou en `-v`/`--debug` (le flux de logs rendrait un affichage live illisible) : repli sur l'affichage simple ligne-par-ligne de la Feature 06b, sans redessin ANSI. Niveau de détail par défaut : une ligne par stage. `-v`/`--verbose` ajoute une ligne par appel externe individuel (adapter invoqué, appel LLM émis/servi depuis le cache/échoué). Implémenté par la **Feature 13**, même mécanisme de logging que Q170/Q179.
 
 **175. Peut-on relancer uniquement un analyzer ?**
 Décidé — oui, nécessaire pour l'itération/debug (cf. Q32/Q179) et cohérent avec la persistance des facts (Q47/Q48).
@@ -608,10 +608,13 @@ Décidé — oui, cas particulier de Q175/Q47 : rejouer la synthèse sur des fac
 Proposition. Sous-commande CLI dédiée (ex. `project-intel facts query`) permettant de filtrer/afficher les facts stockés sans passer par le rapport HTML, utile pour le debug (Q179).
 
 **179. Comment debugge-t-on un adapter ?**
-Proposition. Mode `--verbose`/`--debug` par adapter affichant la commande exacte invoquée, la sortie brute avant normalisation, et le résultat de la normalisation — nécessaire pour diagnostiquer un échec (Q30) ou une sortie inattendue.
+Décidé (résolu 2026-09-14). Verbosité graduée plutôt qu'un simple flag binaire : `-v`/`--verbose` (niveau `INFO`, cf. Q174) puis `-vv`/`--debug`/`--log-level=DEBUG` (niveau `DEBUG`) — ce dernier affiche la commande exacte invoquée par adapter, sa sortie brute avant normalisation, et le résultat de la normalisation, nécessaire pour diagnostiquer un échec (Q30) ou une sortie inattendue. Un appel LLM échoué (Q170) est journalisé avec le même niveau de détail (provider, modèle, erreur sous-jacente) dès `WARNING`, sans attendre `--debug`, puisque c'est justement l'information manquante identifiée lors du dogfooding réel de l'outil. Implémenté par la **Feature 13**.
 
 **180. Comment affiche-t-on les erreurs sans interrompre toute l'analyse ?**
 Décidé — cohérent avec Q30/Q107 : les erreurs sont collectées et affichées en fin d'exécution (résumé des analyzers `failed`/`skipped`) plutôt que d'interrompre le run global.
+
+**181. La CLI doit-elle être interactive quand une configuration requise manque (ex. modèle Ollama non précisé) ?**
+Décidé (résolu 2026-09-14). Oui, mais seulement quand c'est possible sans surprendre un usage scripté : si l'entrée standard est un terminal interactif (TTY) et qu'une valeur requise manque (ex. `--llm-provider ollama` sans `--ollama-model`), la CLI propose un prompt (`click.prompt`/`click.confirm`) plutôt qu'un échec sec — par exemple lister les modèles Ollama disponibles localement (`ollama list`) et laisser choisir. Si l'entrée standard n'est pas un TTY (CI, script, pipe), aucun prompt : échec immédiat avec le message actionnable déjà spécifié par la Feature 07b. Implémenté par la **Feature 13**, en s'appuyant sur les primitives d'interactivité déjà fournies par `click` (dépendance déjà utilisée par la CLI, aucune nouvelle dépendance).
 
 ---
 

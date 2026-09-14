@@ -48,6 +48,16 @@ Primary output: an interactive, evidence-linked HTML report. Secondary outputs: 
 
 Explicit non-goals: this is not meant to become a general AST analyzer, dependency-analysis tool, security scanner, IDE, Git replacement, Terraform/K8s tooling replacement, blind-exploration agent, or a tool that dumps whole repositories to an LLM.
 
+## Dogfooding smoke test
+
+After a feature that touches the `analyze` pipeline lands (tests + lint passing), run the CLI for real, on two concrete targets, before considering it done — this is in addition to, not instead of, the feature's own automated tests:
+
+```bash
+atlas analyze --llm-provider ollama --ollama-model qwen3:14b .
+```
+
+The first is fast and catches obvious breakage; the second is a larger, real-world repository and catches what only shows up at scale (hangs, a stage that assumes a small input, LLM failures that don't reproduce on a tiny fixture). Check the exit code and the per-stage summary, not just "it didn't crash." This practice is what surfaced the need for the logging/verbosity work in [Feature 13](specs/features/13-cli.md) — an opaque `not_analyzed: llm_failed` with no further detail is exactly the kind of thing this step is meant to catch early.
+
 ## Working in this repo right now
 
 Implementation work follows [specs/features/](specs/features/) strictly in order (01 → 13); each feature's spec lists what it depends on, what it must not implement yet (points still **Proposition**/**Ouvert** in Design Decisions.md), and its acceptance criteria. Do not skip ahead or build something two features early just because it seems related — a later feature's spec is the place that resolves what an earlier one deliberately left open. Commit after each feature lands, same as the specs themselves were committed one per feature.
