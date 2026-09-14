@@ -412,3 +412,264 @@ def test_schema_description_lists_fields():
     assert "name" in desc
     assert "confidence" in desc
     assert "fact_ids" in desc
+
+# ---------------------------------------------------------------------------
+# OllamaProvider — Feature 07b
+# ---------------------------------------------------------------------------
+
+
+import urllib.error
+import urllib.request as _urllib_request
+
+from project_intel.llm import OllamaProvider
+from project_intel.llm.providers import suggest_ollama_budget as _suggest
+
+
+@dataclasses.dataclass
+class _OllamaResult:
+    name: str
+    confidence: float
+    fact_ids: list[str]
+
+
+def _make_ollama_http_response(body: dict):
+    """Build a minimal fake HTTP response object for urlopen mocking."""
+
+    class _Resp:
+        def read(self):
+            return json.dumps(body).encode()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+    return _Resp()
+
+
+def _make_http_error(code: int, body: dict):
+    import io
+    import urllib.error
+    return urllib.error.HTTPError(
+        url="http://localhost:11434/api/generate",
+        code=code,
+        msg="error",
+        hdrs=None,  # type: ignore[arg-type]
+        fp=io.BytesIO(json.dumps(body).encode()),
+    )
+
+
+def test_ollama_provider_missing_model():
+    """OllamaProvider without model raises TypeError with actionable message."""
+    with pytest.raises(TypeError, match="OLLAMA_MODEL"):
+        OllamaProvider(model="")
+
+
+def test_ollama_provider_no_default_model():
+    """OllamaProvider requires model — cannot be constructed without it."""
+    import inspect
+    sig = inspect.signature(OllamaProvider.__init__)
+    # 'model' has no default
+    assert sig.parameters["model"].default is inspect.Parameter.empty
+
+
+def test_ollama_provider_ok_response(monkeypatch):
+    """Well-formed JSON response is structured into the schema."""
+    provider = OllamaProvider(model="qwen2.5:14b")
+    provider._connectivity_checked = True  # skip connectivity check
+
+    response_body = {"response": json.dumps({"name": "hello", "confidence": 0.9, "fact_ids": []})}
+
+    monkeypatch.setattr(_urllib_request, "urlopen", lambda *a, **kw: _make_ollama_http_response(response_body))
+
+    result = provider.complete(_prompt(), _OllamaResult)
+    assert result.status == "ok"
+    assert isinstance(result.value, _OllamaResult)
+    assert result.value.name == "hello"
+
+
+def test_ollama_provider_malformed_json(monkeypatch):
+    """Non-JSON response produces not_analyzed: llm_failed."""
+    provider = OllamaProvider(model="qwen2.5:14b")
+    provider._connectivity_checked = True
+
+    class _BadResp:
+        def read(self): return b"not json"
+        def __enter__(self): return self
+        def __exit__(self, *_): pass
+
+    monkeypatch.setattr(_urllib_request, "urlopen", lambda *a, **kw: _BadResp())
+
+    result = provider.complete(_prompt(), _OllamaResult)
+    assert result.status == "not_analyzed"
+    assert result.reason == "llm_failed"
+
+
+def test_ollama_provider_connection_error(monkeypatch):
+    """Connection refused produces not_analyzed: llm_failed."""
+    provider = OllamaProvider(model="qwen2.5:14b")
+    provider._connectivity_checked = True
+
+    def _raise(*a, **kw):
+        raise urllib.error.URLError("Connection refused")
+
+    monkeypatch.setattr(_urllib_request, "urlopen", _raise)
+
+    result = provider.complete(_prompt(), _OllamaResult)
+    assert result.status == "not_analyzed"
+    assert result.reason == "llm_failed"
+
+
+def test_ollama_provider_timeout(monkeypatch):
+    """Timeout produces not_analyzed: llm_failed."""
+    provider = OllamaProvider(model="qwen2.5:14b")
+    provider._connectivity_checked = True
+
+    def _raise(*a, **kw):
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(_urllib_request, "urlopen", _raise)
+
+    result = provider.complete(_prompt(), _OllamaResult)
+    assert result.status == "not_analyzed"
+    assert result.reason == "llm_failed"
+
+
+def test_ollama_provider_model_not_found_message(monkeypatch, capsys):
+    """404 with 'not found' body prints actionable message, returns not_analyzed."""
+    provider = OllamaProvider(model="missing-model")
+    provider._connectivity_checked = True
+
+    def _raise(*a, **kw):
+        raise _make_http_error(404, {"error": "model 'missing-model' not found, try pulling it first"})
+
+    monkeypatch.setattr(_urllib_request, "urlopen", _raise)
+
+    result = provider.complete(_prompt(), _OllamaResult)
+    assert result.status == "not_analyzed"
+    assert result.reason == "llm_failed"
+    captured = capsys.readouterr()
+    assert "ollama pull missing-model" in captured.out
+
+
+def test_ollama_provider_connectivity_check_prints_message(monkeypatch, capsys):
+    """Connection refused on first call prints actionable message."""
+    provider = OllamaProvider(model="qwen2.5:14b")
+
+    call_count = [0]
+
+    def _raise(*a, **kw):
+        call_count[0] += 1
+        raise urllib.error.URLError("Connection refused")
+
+    monkeypatch.setattr(_urllib_request, "urlopen", _raise)
+
+    result = provider.complete(_prompt(), _OllamaResult)
+    captured = capsys.readouterr()
+    assert "ollama serve" in captured.out
+    assert result.status == "not_analyzed"
+
+
+def test_ollama_connectivity_check_runs_only_once(monkeypatch):
+    """_check_connectivity is only called once per instance."""
+    provider = OllamaProvider(model="qwen2.5:14b")
+
+    ping_calls = [0]
+    generate_calls = [0]
+
+    def _urlopen(url_or_req, *a, **kw):
+        url = url_or_req if isinstance(url_or_req, str) else url_or_req.full_url
+        if "api/tags" in url:
+            ping_calls[0] += 1
+            return _make_ollama_http_response({})
+        generate_calls[0] += 1
+        # Return valid response
+        body = {"response": json.dumps({"name": "x", "confidence": 0.5, "fact_ids": []})}
+        return _make_ollama_http_response(body)
+
+    monkeypatch.setattr(_urllib_request, "urlopen", _urlopen)
+
+    provider.complete(_prompt(), _OllamaResult)
+    provider.complete(_prompt("other"), _OllamaResult)
+
+    assert ping_calls[0] == 1  # checked only once
+
+
+def test_ollama_citation_validator_applied(tmp_path: Path, monkeypatch):
+    """OllamaProvider output with unknown fact_ids is rejected by orchestrator citation check."""
+    from project_intel.llm import LLMOrchestrator
+    from project_intel.llm.budget import BudgetTracker
+    from project_intel.llm.cache import LLMCache
+
+    @dataclasses.dataclass
+    class _Cited:
+        label: str
+        fact_ids: list[str]
+
+    provider = OllamaProvider(model="qwen2.5:14b")
+    provider._connectivity_checked = True
+
+    def _urlopen(*a, **kw):
+        body = {"response": json.dumps({"label": "x", "fact_ids": ["ghost-id"]})}
+        return _make_ollama_http_response(body)
+
+    monkeypatch.setattr(_urllib_request, "urlopen", _urlopen)
+
+    store = FactStore(tmp_path / "facts.sqlite")
+    orch = LLMOrchestrator(
+        provider=provider,
+        store=store,
+        cache=LLMCache(tmp_path / "cache.sqlite"),
+        budget=BudgetTracker(BudgetConfig.unlimited()),
+    )
+    result = orch.complete(_prompt(), _Cited)
+    assert result.status == "not_analyzed"
+    assert result.reason == "llm_failed"
+    store.close()
+
+
+def test_suggest_ollama_budget_from_fixture(monkeypatch):
+    """suggest_ollama_budget returns int derived from context_length fixture."""
+    show_response = {
+        "model_info": {"llama.context_length": 32768},
+    }
+
+    def _urlopen(*a, **kw):
+        return _make_ollama_http_response(show_response)
+
+    monkeypatch.setattr(_urllib_request, "urlopen", _urlopen)
+
+    result = _suggest("qwen2.5:14b")
+    assert isinstance(result, int)
+    assert result == 32768 - 2048
+
+
+def test_suggest_ollama_budget_failure_returns_none(monkeypatch):
+    """suggest_ollama_budget returns None (not raises) on network failure."""
+    def _raise(*a, **kw):
+        raise urllib.error.URLError("refused")
+
+    monkeypatch.setattr(_urllib_request, "urlopen", _raise)
+
+    assert _suggest("any-model") is None
+
+
+def test_suggest_budget_not_called_in_complete(monkeypatch):
+    """complete() makes no /api/show call — suggest_ollama_budget is advisory only."""
+    provider = OllamaProvider(model="qwen2.5:14b")
+    provider._connectivity_checked = True
+
+    show_called = [False]
+
+    def _urlopen(url_or_req, *a, **kw):
+        url = url_or_req if isinstance(url_or_req, str) else url_or_req.full_url
+        if "api/show" in url:
+            show_called[0] = True
+        body = {"response": json.dumps({"name": "x", "confidence": 0.5, "fact_ids": []})}
+        return _make_ollama_http_response(body)
+
+    monkeypatch.setattr(_urllib_request, "urlopen", _urlopen)
+
+    provider.complete(_prompt(), _OllamaResult)
+    assert show_called[0] is False
