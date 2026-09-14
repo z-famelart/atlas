@@ -8,6 +8,7 @@ from ..discovery.stage import STAGE as discovery_stage
 from ..domain.stage import STAGE as domain_stage
 from ..git_analysis.stage import STAGE as git_stage
 from ..hotspots.stage import STAGE as hotspots_stage
+from ..onboarding.stage import STAGE as onboarding_stage
 from .types import Stage
 
 STAGE_REGISTRY: list[Stage] = [
@@ -17,4 +18,5 @@ STAGE_REGISTRY: list[Stage] = [
     hotspots_stage,
     architecture_stage,
     domain_stage,
+    onboarding_stage,
 ]
