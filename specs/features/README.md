@@ -11,8 +11,9 @@ Build (and commit) in this order — each feature depends only on the ones befor
 5. [Code graph](05-code-graph.md) — **Part A** (buildable now): `GraphProvider` protocol, multi-level aggregation, centrality/communities/cycles, all tested against fixture facts. **Part B** (gated): the concrete `GraphProvider`.
 6. [Hotspots](06-hotspots.md) — **Part A** (buildable now): the scoring engine (normalization, combination, decomposition, missing-data handling, weights), tested against fixture facts. **Part B** (gated): the concrete complexity adapter.
 6b. [Minimal CLI](06b-minimal-cli.md) — a walking-skeleton `project-intel analyze`/`facts query`. Does **not** depend on Feature 06 — it's buildable as soon as 01/02 exist, and runs whatever subset of 03/04/05/06/08/09/10 is registered at the time, so the deterministic (and later LLM) pipeline is testable incrementally, feature by feature, without waiting for the full CLI.
-7. [LLM orchestration framework](07-llm-orchestration.md) — provider abstraction, citations, caching, budget.
-8. [Architecture interpretation](08-architecture-interpretation.md) — sourced architectural hypotheses.
+7. [LLM orchestration framework](07-llm-orchestration.md) — provider abstraction, citations, caching, budget. **Already implemented** — its spec is a stable record of what shipped (`ClaudeCodeProvider` as the current default) and must not be rewritten to add new providers; see 07b below for how those are added instead.
+7b. [Ollama local provider](07b-ollama-provider.md) — a second `LLMProvider` implementation for a local Ollama + Qwen setup, added additively on top of the already-shipped Feature 07 without changing its interface or default. Doesn't depend on Feature 08/09/10.
+8. [Architecture interpretation](08-architecture-interpretation.md) — sourced architectural hypotheses. **Already implemented.**
 9. [Domain understanding](09-domain-understanding.md) — business concepts/workflows/glossary.
 10. [Onboarding path](10-onboarding-path.md) — synthesis of 05/06/08/09 into a recommended entry path.
 11. [HTML report](11-html-report.md) — the primary output.
@@ -41,3 +42,5 @@ These specs are the source of truth, not the code. The implementation must be re
 - **Tests pin shape, not just behavior.** Prefer snapshot/golden tests that fail on any unintended change to a produced artifact's exact shape (serialized fact, query result, generated file) over tests that only assert "it doesn't crash." A looser test lets an interface silently drift across a regeneration; a snapshot test catches it immediately.
 
 Feature 01 is the first place these rules are applied concretely (frozen+slotted dataclasses, a deterministic `FactStore` interface, snapshot-tested output) — later features should follow the same pattern rather than reinvent it.
+
+**Once a feature is implemented, its spec becomes a historical record of a stable interface, not a draft to keep editing.** Wanting new capability in an already-shipped feature (a new provider, a new adapter, a new primitive) is not a reason to rewrite that feature's spec — it's a reason to add a new, lettered-suffix feature that depends on it additively, the same way [02b](02b-mvp-scope-decision.md), [06b](06b-minimal-cli.md), and [07b](07b-ollama-provider.md) were inserted after the fact. Check the actual source tree (or ask) before editing any numbered feature spec whose number is lower than what's already been implemented.

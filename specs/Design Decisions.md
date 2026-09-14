@@ -571,7 +571,7 @@ Proposition — P1. Non détaillé dans les documents actuels ; à minima, les n
 Décidé (principe) — cf. Q163/Q164 : le mode local-only + désactivation LLM (Q95) doit permettre une analyse complète d'un repository confidentiel sans qu'aucune donnée ne sorte, seule dégradation étant l'absence de synthèse LLM.
 
 **168. Peut-on utiliser un LLM local ?**
-Proposition — oui, souhaitable : l'interface `LLMProvider` (Q94) doit pouvoir cibler un modèle local (ex. via Ollama ou équivalent) sans changement de la couche synthèse, ce qui résout Q167 sans désactiver complètement l'interprétation.
+Décidé (résolu 2026-09-14). Oui — **Ollama** (`http://localhost:11434` par défaut) avec un modèle **Qwen** installé par l'utilisateur. Le nom exact du modèle est une valeur de configuration runtime, jamais codée en dur (ce qui est installé est un fait sur la machine de l'utilisateur, pas une constante de spec). Implémenté par la **Feature 07b** (`specs/features/07b-ollama-provider.md`), en tant que nouvelle implémentation de l'interface `LLMProvider` déjà livrée par la Feature 07 — additive, sans modifier le contrat ni le défaut déjà shippé de Feature 07 (cf. Q94). Résout Q167 : une fois configuré, la synthèse LLM peut rester entièrement locale, pas seulement désactivée.
 
 **169. Peut-on désactiver certaines catégories d'analyse ?**
 Décidé — oui, chaque catégorie d'analyzer (section B-K) doit être activable/désactivable en configuration indépendamment des autres.
