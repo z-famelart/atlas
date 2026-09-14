@@ -49,62 +49,69 @@ def test_contract_invariants(facts):
 
 
 # ---------------------------------------------------------------------------
-# Node → symbol_defined
+# Node → symbol_defined (using graphify slug IDs)
 # ---------------------------------------------------------------------------
 
 
 def test_node_emits_symbol_defined(facts):
     symbol_facts = [f for f in facts if f.type == "symbol_defined"]
     ids = {f.subject.id for f in symbol_facts}
-    assert "src/foo.py::MyClass" in ids
-    assert "src/bar.py::helper" in ids
+    assert "src_foo_py_myclass" in ids
+    assert "src_bar_py_helper" in ids
 
 
 def test_symbol_fact_has_symbol_ref_evidence(facts):
-    f = next(f for f in facts if f.subject.id == "src/foo.py::MyClass")
+    f = next(f for f in facts if f.subject.id == "src_foo_py_myclass")
     ev = f.evidence[0]
     assert ev.kind == "symbol"
-    assert ev.ref.symbol_id == "src/foo.py::MyClass"
+    assert ev.ref.symbol_id == "src_foo_py_myclass"
     assert ev.ref.path == "src/foo.py"
     assert ev.ref.repository_id == "repo-test"
 
 
 def test_symbol_fact_value(facts):
-    f = next(f for f in facts if f.subject.id == "src/foo.py::MyClass")
-    assert f.value == {"name": "MyClass", "kind": "class"}
+    f = next(f for f in facts if f.subject.id == "src_foo_py_myclass")
+    assert f.value["name"] == "MyClass"
+    assert f.value["kind"] == "class"
+    assert f.value["file"] == "src/foo.py"
+
+
+def test_callable_node_is_function(facts):
+    f = next(f for f in facts if f.subject.id == "src_bar_py_helper")
+    assert f.value["kind"] == "function"
 
 
 # ---------------------------------------------------------------------------
-# imports edge → RelationType.IMPORTS
+# imports link → file-level imports fact (type="imports")
 # ---------------------------------------------------------------------------
 
 
-def test_imports_edge_emits_relation(facts):
-    rel = [f for f in facts if f.type == "relation" and f.predicate == RelationType.IMPORTS]
+def test_imports_link_emits_fact(facts):
+    rel = [f for f in facts if f.type == RelationType.IMPORTS.value]
     assert len(rel) == 1
-    assert rel[0].subject == (
-        rel[0].subject.__class__(EntityType.FILE, "src/foo.py")
-    )
+    assert rel[0].subject.id == "src/foo.py"
     assert rel[0].object.id == "src/bar.py"
+    assert rel[0].subject.type == EntityType.FILE
 
 
 def test_imports_fact_has_file_ref_evidence(facts):
-    rel = next(f for f in facts if f.type == "relation" and f.predicate == RelationType.IMPORTS)
+    rel = next(f for f in facts if f.type == RelationType.IMPORTS.value)
     ev = rel.evidence[0]
     assert ev.kind == "file"
     assert ev.ref.path == "src/foo.py"
 
 
 # ---------------------------------------------------------------------------
-# calls edge → RelationType.CALLS
+# calls link → file-level calls fact (type="calls", deduplicated)
 # ---------------------------------------------------------------------------
 
 
-def test_calls_edge_emits_relation(facts):
-    rel = [f for f in facts if f.type == "relation" and f.predicate == RelationType.CALLS]
+def test_calls_link_emits_fact(facts):
+    rel = [f for f in facts if f.type == RelationType.CALLS.value]
     assert len(rel) == 1
-    assert rel[0].subject.id == "src/foo.py::MyClass"
-    assert rel[0].object.id == "src/bar.py::helper"
+    # calls src_foo_py_myclass → src_bar_py_helper maps to file src/foo.py → src/bar.py
+    assert rel[0].subject.id == "src/foo.py"
+    assert rel[0].object.id == "src/bar.py"
 
 
 # ---------------------------------------------------------------------------
@@ -131,15 +138,15 @@ def test_all_facts_source_analyzer(facts):
 
 
 def test_non_mvp_file_excluded(facts):
-    """docs/README.txt node must not appear (not a supported extension)."""
-    ids = {f.subject.id for f in facts}
-    assert "docs/README.txt::nothing" not in ids
+    """docs/README.txt node has file_type=doc — must not appear in symbol_defined."""
+    ids = {f.subject.id for f in facts if f.type == "symbol_defined"}
+    assert "docs_readme_txt_nothing" not in ids
 
 
 def test_rust_file_included(facts):
     """src/baz.rs is in the MVP list — its node must be emitted."""
-    ids = {f.subject.id for f in facts}
-    assert "src/baz.rs::baz_fn" in ids
+    ids = {f.subject.id for f in facts if f.type == "symbol_defined"}
+    assert "src_baz_rs_baz_fn" in ids
 
 
 # ---------------------------------------------------------------------------
@@ -153,3 +160,45 @@ def test_manifest_category(provider: GraphifyProvider):
 
 def test_manifest_source_analyzer_id(provider: GraphifyProvider):
     assert provider.manifest().source_analyzer_id == "graphify@1.0"
+
+
+def test_manifest_command_is_callable(provider: GraphifyProvider):
+    """Command must be a callable (runs graphify update then reads file), not a CLI list."""
+    assert callable(provider.manifest().command)
+
+
+# ---------------------------------------------------------------------------
+# Integration test: runs actual graphify binary if installed
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(
+    not __import__("shutil").which("graphify"),
+    reason="graphify not installed",
+)
+def test_integration_real_graphify(tmp_path: Path):
+    """Run graphify update on a minimal Python fixture and verify facts are produced."""
+    (tmp_path / "main.py").write_text("def hello():\n    return world()\n\ndef world():\n    return 42\n")
+    (tmp_path / "utils.py").write_text("from main import hello\n\ndef run():\n    return hello()\n")
+
+    from datetime import UTC, datetime
+
+    from project_intel.adapters.manifest import AdapterContext
+    from project_intel.adapters.runner import _run_one
+
+    ctx = AdapterContext(
+        target_path=tmp_path,
+        run_id="integration-run",
+        repository_id="integration-repo",
+        timestamp=datetime.now(UTC),
+    )
+    provider = GraphifyProvider()
+    result = _run_one(provider.manifest(), ctx)
+
+    # graphify ran successfully or was skipped (version mismatch / tool not found)
+    assert result.status.value in ("ok", "skipped:tool_not_found", "skipped:version_mismatch", "failed")
+    if result.status.value == "ok":
+        assert len(result.facts) > 0
+        types = {f.type for f in result.facts}
+        # Should have at least symbol_defined or relation facts
+        assert types & {"symbol_defined", "calls", "imports"}

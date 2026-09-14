@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import uuid
 from pathlib import Path
 
@@ -22,9 +23,29 @@ _MVP_EXTENSIONS: frozenset[str] = frozenset(
     [".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".java", ".kt", ".rb", ".rs"]
 )
 
+# graphify link relations → our RelationType; others are skipped
+_RELATION_MAP: dict[str, RelationType] = {
+    "calls": RelationType.CALLS,
+    "imports": RelationType.IMPORTS,
+    "imports_from": RelationType.IMPORTS,
+    "inherits": RelationType.INHERITS_FROM,
+}
+
 
 def _is_mvp_file(path: str) -> bool:
     return Path(path).suffix in _MVP_EXTENSIONS
+
+
+def _graphify_command(ctx: AdapterContext) -> str:
+    """Run `graphify update <path>` and return the resulting graph.json content."""
+    subprocess.run(
+        ["graphify", "update", str(ctx.target_path)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    graph_path = ctx.target_path / "graphify-out" / "graph.json"
+    return graph_path.read_text()
 
 
 class GraphifyProvider:
@@ -38,10 +59,9 @@ class GraphifyProvider:
             name=self.NAME,
             version=self.VERSION,
             category="code_graph",
-            command=[self.NAME, "--format", "json", "{target_path}"],
-            min_version="0.1.0",
+            command=_graphify_command,
             normalize=self._normalize,
-            install_hint="pip install graphify  # or: cargo install graphify",
+            install_hint="npm install -g graphify  # see graphify docs for install options",
             supported_ecosystems=[
                 "python", "typescript", "javascript", "go",
                 "java", "kotlin", "ruby", "rust",
@@ -51,17 +71,30 @@ class GraphifyProvider:
     def _normalize(self, raw: str, ctx: AdapterContext) -> list[Fact]:
         data = json.loads(raw)
         analyzer = f"{self.NAME}@{self.VERSION}"
+
+        # Build slug → node lookup for source_file resolution
+        nodes_by_id: dict[str, dict] = {n["id"]: n for n in data.get("nodes", [])}
+
         facts: list[Fact] = []
 
-        for node in data.get("nodes", []):
-            if not _is_mvp_file(node["file"]):
+        # --- symbol_defined facts (callable nodes in MVP-language files) ---
+        for node in nodes_by_id.values():
+            if node.get("file_type") != "code":
                 continue
+            if not (node.get("_callable") or node.get("_callable_class")):
+                continue  # skip file-level container nodes
+            source_file = node.get("source_file", "")
+            if not _is_mvp_file(source_file):
+                continue
+
+            symbol_id = node["id"]
+            kind = "class" if node.get("_callable_class") else "function"
             facts.append(
                 Fact(
-                    id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"{ctx.run_id}:symbol:{node['id']}")),
+                    id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"{ctx.run_id}:symbol:{symbol_id}")),
                     type="symbol_defined",
-                    subject=EntityRef(EntityType.SYMBOL, node["id"]),
-                    value={"name": node["name"], "kind": node["kind"]},
+                    subject=EntityRef(EntityType.SYMBOL, symbol_id),
+                    value={"name": node["label"], "kind": kind, "file": source_file},
                     provenance="observed",
                     confidence=1.0,
                     source_analyzer=analyzer,
@@ -70,8 +103,8 @@ class GraphifyProvider:
                             kind="symbol",
                             ref=SymbolRef(
                                 repository_id=ctx.repository_id,
-                                path=node["file"],
-                                symbol_id=node["id"],
+                                path=source_file,
+                                symbol_id=symbol_id,
                             ),
                             source_analyzer=analyzer,
                             retrieved_at=ctx.timestamp,
@@ -83,67 +116,53 @@ class GraphifyProvider:
                 )
             )
 
-        for edge in data.get("edges", []):
-            kind = edge["kind"]
-            src, tgt = edge["source"], edge["target"]
+        # --- relation facts (file-level, deduplicated) ---
+        seen_edges: set[tuple[str, str, str]] = set()
+        for link in data.get("links", []):
+            rel_type = _RELATION_MAP.get(link.get("relation", ""))
+            if rel_type is None:
+                continue
 
-            if kind == "imports":
-                if not (_is_mvp_file(src) and _is_mvp_file(tgt)):
-                    continue
-                facts.append(
-                    Fact(
-                        id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"{ctx.run_id}:imports:{src}:{tgt}")),
-                        type="relation",
-                        subject=EntityRef(EntityType.FILE, src),
-                        predicate=RelationType.IMPORTS,
-                        object=EntityRef(EntityType.FILE, tgt),
-                        provenance="observed",
-                        confidence=1.0,
-                        source_analyzer=analyzer,
-                        evidence=(
-                            Evidence(
-                                kind="file",
-                                ref=FileRef(repository_id=ctx.repository_id, path=src),
-                                source_analyzer=analyzer,
-                                retrieved_at=ctx.timestamp,
-                            ),
+            src_node = nodes_by_id.get(link["source"])
+            tgt_node = nodes_by_id.get(link["target"])
+            if not src_node or not tgt_node:
+                continue
+
+            src_file = src_node.get("source_file", "")
+            tgt_file = tgt_node.get("source_file", "")
+            if not src_file or not tgt_file or src_file == tgt_file:
+                continue
+            if not (_is_mvp_file(src_file) and _is_mvp_file(tgt_file)):
+                continue
+
+            edge_key = (src_file, tgt_file, rel_type.value)
+            if edge_key in seen_edges:
+                continue
+            seen_edges.add(edge_key)
+
+            facts.append(
+                Fact(
+                    id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"{ctx.run_id}:{rel_type.value}:{src_file}:{tgt_file}")),
+                    # Use the relation type directly as fact type so metrics can query by type
+                    type=rel_type.value,
+                    subject=EntityRef(EntityType.FILE, src_file),
+                    predicate=rel_type,
+                    object=EntityRef(EntityType.FILE, tgt_file),
+                    provenance="observed",
+                    confidence=1.0,
+                    source_analyzer=analyzer,
+                    evidence=(
+                        Evidence(
+                            kind="file",
+                            ref=FileRef(repository_id=ctx.repository_id, path=src_file),
+                            source_analyzer=analyzer,
+                            retrieved_at=ctx.timestamp,
                         ),
-                        created_at=ctx.timestamp,
-                        schema_version=SCHEMA_VERSION,
-                        run_id=ctx.run_id,
-                    )
+                    ),
+                    created_at=ctx.timestamp,
+                    schema_version=SCHEMA_VERSION,
+                    run_id=ctx.run_id,
                 )
-            elif kind == "calls":
-                src_file = src.split("::")[0] if "::" in src else src
-                tgt_file = tgt.split("::")[0] if "::" in tgt else tgt
-                if not (_is_mvp_file(src_file) and _is_mvp_file(tgt_file)):
-                    continue
-                facts.append(
-                    Fact(
-                        id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"{ctx.run_id}:calls:{src}:{tgt}")),
-                        type="relation",
-                        subject=EntityRef(EntityType.SYMBOL, src),
-                        predicate=RelationType.CALLS,
-                        object=EntityRef(EntityType.SYMBOL, tgt),
-                        provenance="observed",
-                        confidence=1.0,
-                        source_analyzer=analyzer,
-                        evidence=(
-                            Evidence(
-                                kind="symbol",
-                                ref=SymbolRef(
-                                    repository_id=ctx.repository_id,
-                                    path=src_file,
-                                    symbol_id=src,
-                                ),
-                                source_analyzer=analyzer,
-                                retrieved_at=ctx.timestamp,
-                            ),
-                        ),
-                        created_at=ctx.timestamp,
-                        schema_version=SCHEMA_VERSION,
-                        run_id=ctx.run_id,
-                    )
-                )
+            )
 
         return facts

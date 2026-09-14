@@ -1,12 +1,16 @@
 {
+  "directed": true,
+  "multigraph": false,
   "nodes": [
-    {"id": "src/foo.py::MyClass", "kind": "class", "file": "src/foo.py", "name": "MyClass"},
-    {"id": "src/bar.py::helper", "kind": "function", "file": "src/bar.py", "name": "helper"},
-    {"id": "src/baz.rs::baz_fn", "kind": "function", "file": "src/baz.rs", "name": "baz_fn"},
-    {"id": "docs/README.txt::nothing", "kind": "function", "file": "docs/README.txt", "name": "nothing"}
+    {"id": "src_foo_py_myclass", "label": "MyClass", "_callable": false, "_callable_class": true, "_origin": "ast", "file_type": "code", "source_file": "src/foo.py", "source_location": "L1"},
+    {"id": "src_bar_py_helper", "label": "helper", "_callable": true, "_callable_class": false, "_origin": "ast", "file_type": "code", "source_file": "src/bar.py", "source_location": "L3"},
+    {"id": "src_baz_rs_baz_fn", "label": "baz_fn", "_callable": true, "_callable_class": false, "_origin": "ast", "file_type": "code", "source_file": "src/baz.rs", "source_location": "L1"},
+    {"id": "docs_readme_txt_nothing", "label": "nothing", "_callable": false, "_callable_class": false, "_origin": "ast", "file_type": "doc", "source_file": "docs/README.txt", "source_location": "L1"},
+    {"id": "src_foo_py", "label": "foo.py", "_callable": false, "_callable_class": false, "_origin": "ast", "file_type": "code", "source_file": "src/foo.py", "source_location": "L1"},
+    {"id": "src_bar_py", "label": "bar.py", "_callable": false, "_callable_class": false, "_origin": "ast", "file_type": "code", "source_file": "src/bar.py", "source_location": "L1"}
   ],
-  "edges": [
-    {"source": "src/foo.py", "target": "src/bar.py", "kind": "imports"},
-    {"source": "src/foo.py::MyClass", "target": "src/bar.py::helper", "kind": "calls"}
+  "links": [
+    {"source": "src_foo_py", "target": "src_bar_py", "relation": "imports", "_origin": "ast", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "src/foo.py", "source_location": "L1", "weight": 1.0},
+    {"source": "src_foo_py_myclass", "target": "src_bar_py_helper", "relation": "calls", "_origin": "ast", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "src/foo.py", "source_location": "L2", "weight": 1.0}
   ]
 }
