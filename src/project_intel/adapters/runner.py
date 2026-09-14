@@ -27,7 +27,7 @@ def _check_presence(manifest: AdapterManifest) -> bool:
 
 
 def _detect_version(binary: str) -> str | None:
-    """Run `binary --version` and extract the first X.Y[.Z] version string found."""
+    """Run `binary --version` and extract the first version string found."""
     try:
         proc = subprocess.run(
             [binary, "--version"],
@@ -37,7 +37,7 @@ def _detect_version(binary: str) -> str | None:
             check=False,
         )
         output = proc.stdout + proc.stderr
-        match = re.search(r"(\d+\.\d+(?:\.\d+)?)", output)
+        match = re.search(r"(\d+(?:\.\d+)+)", output)
         return match.group(1) if match else None
     except (subprocess.SubprocessError, FileNotFoundError, OSError):
         return None
@@ -47,12 +47,20 @@ def _version_in_range(version: str, min_v: str | None, max_v: str | None) -> boo
     """Return True if version is within [min_v, max_v] (both bounds inclusive, both optional)."""
     try:
         v = Version(version)
-        if min_v and v < Version(min_v):
-            return False
-        if max_v and v > Version(max_v):
-            return False
     except InvalidVersion:
         return False
+    if min_v:
+        try:
+            if v < Version(min_v):
+                return False
+        except InvalidVersion as exc:
+            raise InvalidVersion(f"Bad manifest constraint min_version={min_v!r}: {exc}") from exc
+    if max_v:
+        try:
+            if v > Version(max_v):
+                return False
+        except InvalidVersion as exc:
+            raise InvalidVersion(f"Bad manifest constraint max_version={max_v!r}: {exc}") from exc
     return True
 
 

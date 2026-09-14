@@ -209,7 +209,7 @@ def test_failing_adapter_does_not_abort_siblings(tmp_path: Path):
     assert by_name["crasher"].status == AdapterStatus.FAILED
     assert by_name["crasher"].error == "boom"
     assert by_name["crasher"].facts == ()
-    assert by_name["healthy" if "healthy" in by_name else "file-counter"].status == AdapterStatus.OK
+    assert by_name["file-counter"].status == AdapterStatus.OK
 
 
 def test_failing_adapter_status_and_siblings_ok(tmp_path: Path):
