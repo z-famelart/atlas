@@ -1,0 +1,11 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "duration_ms": 1234,
+  "duration_api_ms": 1000,
+  "num_turns": 1,
+  "result": "{\"name\": \"hello\", \"confidence\": 0.9, \"fact_ids\": []}",
+  "session_id": "sess_fixture001",
+  "total_cost_usd": 0.001
+}

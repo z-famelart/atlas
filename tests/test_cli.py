@@ -95,9 +95,9 @@ def fixture_repo(tmp_path: Path) -> Path:
 def test_analyze_e2e(fixture_repo: Path, tmp_path: Path):
     """Running all registered stages against a real fixture repo should produce facts."""
     import uuid
-    store_path = fixture_repo / ".project-intel" / "facts.sqlite"
-    store_path.parent.mkdir()
-    store = FactStore(store_path)
+    store_path = fixture_repo / ".atlas-cache"
+    store_path.mkdir()
+    store = FactStore(store_path / "facts.sqlite")
 
     ctx = PipelineContext(
         store=store,
@@ -174,7 +174,7 @@ def test_cli_analyze_runs(fixture_repo: Path):
 def test_cli_facts_query(fixture_repo: Path):
     """After analyze, facts query should return stored facts."""
     import uuid
-    store_path = fixture_repo / ".project-intel"
+    store_path = fixture_repo / ".atlas-cache"
     store_path.mkdir(exist_ok=True)
     store = FactStore(store_path / "facts.sqlite")
     run_id = str(uuid.uuid4())

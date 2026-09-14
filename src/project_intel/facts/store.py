@@ -240,6 +240,10 @@ class FactStore:
             rows = session.scalars(stmt).all()
             return iter([_row_to_fact(r) for r in rows])
 
+    def fact_exists(self, fact_id: str) -> bool:
+        with self._Session() as session:
+            return session.get(_FactRow, fact_id) is not None
+
     def get_entity(self, ref: EntityRef) -> Entity | None:
         with self._Session() as session:
             row = session.get(_EntityRow, (ref.type.value, ref.id))

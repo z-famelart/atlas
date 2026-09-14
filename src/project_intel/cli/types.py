@@ -4,18 +4,13 @@ from __future__ import annotations
 
 import dataclasses
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 from ..facts.store import FactStore
 
 if TYPE_CHECKING:
     from ..discovery.scope import ScopeConfig
-
-
-class LLMProvider(Protocol):
-    """Placeholder — fulfilled by Feature 07."""
-
-    def complete(self, prompt: str, **kwargs: Any) -> str: ...
+    from ..llm.providers import LLMProvider
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
