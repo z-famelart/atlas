@@ -10,6 +10,12 @@ Expose the same knowledge as the HTML report to a coding agent via MCP, read-onl
 
 ## Scope
 
+### CLI vs. MCP: two independent entry points, one `FactStore`
+
+Project Intelligence has exactly two front-ends onto the same underlying `FactStore`, matching its two audiences from the Product Brief: the **CLI** ([06b](06b-minimal-cli.md)/[13](13-cli.md)) is the **human** entry point — it runs stages, writes facts, and generates the HTML report. **This feature, the MCP server, is the AI entry point** — a coding agent connects to it directly to query already-collected facts and insights live, without going through the CLI at all.
+
+Neither wraps the other. The MCP server does not call `project-intel analyze` and the CLI does not embed MCP request-handling — each opens its own connection to the `FactStore` (this feature: read-only; the CLI: read-write via its stages) and each can run independently of whether the other is running. The CLI may print the command to launch this server as a convenience, but that's the extent of the coupling. This is deliberate: an agent should be able to attach to a project's already-analyzed facts (from a run someone else triggered, or a scheduled run) without needing to invoke or wait on a CLI `analyze` pass itself.
+
 ### Read-only, always (Décidé Q153)
 
 Every primitive in this feature is a read from the `FactStore`. No primitive in this feature mutates facts, triggers an adapter, or has any side effect — this is the entire MVP surface (Q154's "trigger new analysis" primitive is explicitly out of scope, see below).
@@ -35,7 +41,7 @@ Every primitive has a default and maximum result limit (pagination or a hard cap
 
 - Triggering a new analysis on demand (**Proposition Q154**, P1, explicitly optional/consent-gated, not decided) — no write/trigger primitive in this feature.
 - Any primitive not listed in Q145–Q151 — this feature does not speculatively add extra query shapes beyond what Design Decisions §M enumerates.
-- Server transport/hosting details beyond implementing the MCP protocol itself (e.g. how it's packaged for a specific coding agent) — covered by the CLI feature's wiring, not this one.
+- Packaging/distribution details for a specific external coding agent's MCP client config (e.g. a specific IDE's settings file) — this feature implements and starts the MCP server itself (its own connection surface, per the framing above), but how a particular external agent is told to connect to it is a documentation concern, not new code here.
 
 ## Acceptance criteria
 
@@ -44,4 +50,5 @@ Every primitive has a default and maximum result limit (pagination or a hard cap
 - A test proves `provenance`/`confidence`/`evidence` survive end-to-end through at least one primitive (e.g. `get_hotspots` returns the same decomposition shape Feature 06 produced, not a stripped-down summary).
 - `get_path` has a documented, enforced max depth and returns a "no path within bound" result rather than searching unboundedly on a fixture graph deliberately constructed to be deep.
 - No primitive mutates the `FactStore` — verified by a test that calls every primitive against a store snapshot and asserts the store is byte-identical afterward.
+- The server can be started and successfully answer queries against a `FactStore` populated by a prior, already-finished `analyze` run, with no CLI process running at the time — proving it's an independent entry point, not something the CLI drives.
 - `uv run pytest` and `uv run ruff check .` pass.

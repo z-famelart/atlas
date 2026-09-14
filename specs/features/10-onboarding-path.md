@@ -29,6 +29,10 @@ All narrative fields carry `fact_ids` and `confidence` per Feature 07's standard
 
 `Fact(type=onboarding_path, subject=Repository|System, value=<the shape above>, provenance=hypothesis)`.
 
+## CLI stage registration (Feature 06b)
+
+This feature exposes a module-level `STAGE: Stage` object (name `"onboarding"`) per [06b](06b-minimal-cli.md)'s contract, with the same `llm_provider=None` degrade path as Features 08/09. Registering it is one import + one entry in `STAGE_REGISTRY`, placed last — after `code_graph`, `hotspots`, `architecture`, and `domain` — since it synthesizes their combined output.
+
 ## Explicitly out of scope for this feature
 
 - Any new deterministic computation — this feature is purely a synthesis layer over facts already produced by Features 05/06/08/09; if a needed signal doesn't exist yet in the `FactStore`, that signal belongs in an earlier feature, not bolted on here.
@@ -41,4 +45,5 @@ All narrative fields carry `fact_ids` and `confidence` per Feature 07's standard
 - Response schema matches the shape above, including the mandatory `open_questions` field.
 - A test with a fake `LLMProvider` proves citation validation behaves identically to Features 08/09 (same Feature 07 mechanism, no feature-specific reimplementation).
 - A test where an upstream feature (e.g. Architecture interpretation) is `not_analyzed` proves this feature still produces a path using only the available inputs, with `confidence` reflecting the reduced evidence rather than failing outright.
+- A `STAGE` object registered in `STAGE_REGISTRY` (last) runs this feature end-to-end via `project-intel analyze` (Feature 06b), including the LLM-disabled degrade path.
 - `uv run pytest` and `uv run ruff check .` pass.

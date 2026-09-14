@@ -56,6 +56,10 @@ All of the above is local filesystem + local binary invocation. No network acces
 
 Delegated entirely to an existing external tool via the Feature 02 adapter contract (e.g. a `tokei`/`github-linguist`-class tool — the exact tool and target language(s) are Feature 02b's decision, not this spec's) — no in-house tokenizing/parsing. Output normalizes to `Fact`s of type `language_detected` (entity: `Repository`/`Directory`, value: language name + LOC) with `provenance = observed`.
 
+## CLI stage registration (Feature 06b)
+
+This feature exposes a module-level `STAGE: Stage` object (name `"discovery"`) per [06b](06b-minimal-cli.md)'s contract. Its `run()` invokes Part A's signature/document/Git-presence detection always, and Part B's language/LOC adapter if implemented (checked at runtime, not a hard import failure if Part B doesn't exist yet) — so this one stage works correctly whether only Part A or both parts are present. Registering it is one import + one entry in `STAGE_REGISTRY` — no other code in 06b changes.
+
 ## Explicitly out of scope for this feature
 
 - Multi-repository/system declaration (**Proposition Q4**, not decided) — this feature runs discovery against one repository at a time; orchestrating it across several repositories of a `Project` is a later concern (not yet a scheduled feature) built on top of this one.
@@ -75,6 +79,7 @@ Delegated entirely to an existing external tool via the Feature 02 adapter contr
 - All outputs are `Fact`s against the Feature 01 model, `provenance = observed`, with file-based `Evidence`.
 - An `unrecognized_artifact` fact type is emitted for anything matching no signature.
 - Unit tests run discovery against a small fixture repository (checked into `tests/fixtures/`) and assert the expected facts, including at least one unrecognized artifact and one scope-excluded file that must *not* appear in the output.
+- A `STAGE` object registered in `STAGE_REGISTRY` runs Part A end-to-end (and Part B too, if present) via `project-intel analyze` (Feature 06b).
 - `uv run pytest` and `uv run ruff check .` pass.
 
 ### Part B (only after Feature 02b is resolved)

@@ -65,6 +65,10 @@ Weights are configurable, with defined defaults; this feature must accept a `Hot
 
 One adapter (Feature 02 contract) wrapping an existing complexity tool for the language(s) chosen in Feature 02b (cyclomatic/cognitive complexity), producing `Fact(type=complexity, subject=File|Symbol, value=<score>, provenance=observed)`. Its job is purely translation — Part A's scoring engine already consumes whatever this adapter produces, unchanged.
 
+## CLI stage registration (Feature 06b)
+
+This feature exposes a module-level `STAGE: Stage` object (name `"hotspots"`) per [06b](06b-minimal-cli.md)'s contract, whose `run()` invokes Part A's scoring engine against whatever complexity/size/centrality/churn facts already exist in the store (per Q74's missing-data handling, a partial component set still produces a valid, decomposed score), and Part B's complexity adapter first if implemented. Registering it is one import + one entry in `STAGE_REGISTRY` — no other code in 06b changes. Once registered, this is also the first stage in the list whose ordering matters: it must run after `discovery`, `git`, and `code_graph` in `STAGE_REGISTRY`, since it reads their output.
+
 ## Explicitly out of scope for this feature
 
 - Adaptive/context-sensitive weighting (**Proposition Q66**, not decided) — fixed default weights only, no adaptive logic.
@@ -80,6 +84,7 @@ One adapter (Feature 02 contract) wrapping an existing complexity tool for the l
 - Normalization is local-distribution-based and size is log-normalized; a test with one artificially huge, otherwise-unremarkable file confirms it does not dominate the ranking.
 - A test with a file missing one component (e.g. no complexity fact present) confirms that component is flagged absent, not treated as zero, and the combined score is computed from the remaining components with `components_available` set correctly.
 - Weights are configurable via a passed-in config object, with a documented default.
+- A `STAGE` object registered in `STAGE_REGISTRY` (after `discovery`/`git`/`code_graph`) runs Part A end-to-end (and Part B too, if present) via `project-intel analyze` (Feature 06b).
 - `uv run pytest` and `uv run ruff check .` pass.
 
 ### Part B (only after Feature 02b is resolved)

@@ -26,4 +26,9 @@ Features 03/05/06 already documented this coupling in prose under "Explicitly ou
 
 ## Resolution
 
-*Not yet resolved. The first agent to implement Feature 03B, 05B, or 06B must follow the rule above before writing any concrete adapter, then fill in this section.*
+**Resolved 2026-09-11** (commit `2c59536`, "Record Feature 02b decisions: tokei, graphify, MVP languages"). `Design Decisions.md` Q21/Q192/Q193 now read **Décidé**:
+
+- **Languages (Q193):** Python, TypeScript/JavaScript, Go, Java/Kotlin, Ruby, Rust — selected for native tokei LOC coverage + available graphify grammars.
+- **Tools (Q21/Q192), in priority order:** tokei (language/LOC), Git (history), graphify (code graph). Complexity and IaC/CI scanners stay optional/degradable for the MVP.
+
+Feature 03B (tokei adapter) and Feature 05B (graphify `GraphProvider`) have both been implemented against this resolution. Feature 06B (concrete complexity adapter) has not yet been implemented — it can proceed directly against this resolution without asking again.

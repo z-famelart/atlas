@@ -48,6 +48,10 @@ Extracted relations (`imports`, `calls`, etc.) are `provenance=observed`. Comput
 
 One concrete `GraphProvider` wrapping the graph/AST tool chosen in Feature 02b, via the Feature 02 adapter contract, for the language(s) chosen there. Its job is purely translation: native tool output → Feature 01 entity/relation facts. No new calculation logic belongs here — Part A's aggregation and centrality/community/cycle computations already consume whatever this provider produces, unchanged.
 
+## CLI stage registration (Feature 06b)
+
+This feature exposes a module-level `STAGE: Stage` object (name `"code_graph"`) per [06b](06b-minimal-cli.md)'s contract. Its `run()` invokes Part A's aggregation and centrality/community/cycle calculations always, and Part B's concrete `GraphProvider` extraction if implemented (checked at runtime) — the extraction step is skipped gracefully (status `skipped`, zero facts) rather than failing when only Part A exists, since there'd be no raw graph facts yet to aggregate/compute over in that case. Registering it is one import + one entry in `STAGE_REGISTRY` — no other code in 06b changes.
+
 ## Explicitly out of scope for this feature
 
 - Boundary inference ("quels sont les boundaries probables" — marked 🟡/partially-LLM in the Capability Matrix, and **Décidé Q76/Q77** puts named-pattern interpretation in the later Architecture Interpretation feature) — this feature produces the observed/computed graph only, not architectural interpretation.
@@ -65,6 +69,7 @@ One concrete `GraphProvider` wrapping the graph/AST tool chosen in Feature 02b, 
 - Module- and system-level nodes are derived by aggregation, demonstrated by a test that feeds hand-authored fixture facts (no real provider needed) and checks a file-level fact rolls up correctly to its module and system ancestors.
 - Centrality, community, and cycle detection implemented via existing libraries, each emitting `provenance=computed` facts with correct evidence (referencing the underlying graph facts they were computed from), tested against hand-authored fixture graphs.
 - A fixture graph with a known cycle (A→B→C→A) is correctly detected.
+- A `STAGE` object registered in `STAGE_REGISTRY` runs Part A end-to-end (and Part B too, if present) via `project-intel analyze` (Feature 06b); with Part B absent, the stage completes with `status=skipped` for extraction and still reports correctly rather than erroring.
 - `uv run pytest` and `uv run ruff check .` pass.
 
 ### Part B (only after Feature 02b is resolved)

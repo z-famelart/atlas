@@ -34,6 +34,10 @@ All Git facts key on the same normalized file path used elsewhere in the model (
 
 Every Git fact's evidence references the relevant commit(s) by full hash (never short hash), per Feature 01's `commit` evidence kind.
 
+### CLI stage registration (Feature 06b)
+
+This feature exposes a module-level `STAGE: Stage` object (name `"git"`) per [06b](06b-minimal-cli.md)'s contract, whose `run()` invokes the churn/co-change computation above against `PipelineContext.repository_path` and inserts the resulting facts. Registering it is one import + one entry in `project_intel/cli/registry.py`'s `STAGE_REGISTRY` — no other code in 06b or this feature changes.
+
 ## Explicitly out of scope for this feature
 
 - Monorepo-specific scoping behavior (**Proposition Q114**, not decided) — this feature computes churn/co-change repository-wide; how a later feature narrows that to a `Project` sub-scope is not addressed here.
@@ -48,4 +52,5 @@ Every Git fact's evidence references the relevant commit(s) by full hash (never 
 - Rename continuity is demonstrated: a test fixture repository with a renamed file shows continuous churn history across the rename.
 - Window parameter honored: a test asserts that commits outside the window are excluded, and that `window=None` includes everything.
 - All facts carry full commit-hash evidence and `provenance=computed`.
+- A `STAGE` object registered in `STAGE_REGISTRY` runs this feature's adapter end-to-end via `project-intel analyze` (Feature 06b).
 - `uv run pytest` and `uv run ruff check .` pass.

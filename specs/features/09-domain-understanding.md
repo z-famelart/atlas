@@ -35,6 +35,10 @@ Every entry carries `fact_ids` (Feature 07's mandatory-citation contract) pointi
 
 **Not built in this feature** (see Explicitly out of scope) but this feature's selector must be structured so a secrets-scanning pass can be inserted between "candidate set selected" and "sent to Feature 07" without restructuring the selection logic — i.e., selection produces an intermediate `list[CandidateContent]` object rather than calling the LLM inline.
 
+## CLI stage registration (Feature 06b)
+
+This feature exposes a module-level `STAGE: Stage` object (name `"domain"`) per [06b](06b-minimal-cli.md)'s contract, with the same `llm_provider=None` degrade path as Feature 08. Registering it is one import + one entry in `STAGE_REGISTRY`, placed after `hotspots` and `code_graph` since selection reads their output.
+
 ## Explicitly out of scope for this feature
 
 - State machine / event extraction (Q90/Q91, P1, not decided in detail — Proposition only) — not built here; this feature covers concepts/workflows/glossary only.
@@ -49,4 +53,5 @@ Every entry carries `fact_ids` (Feature 07's mandatory-citation contract) pointi
 - A test proves that increasing repository size does not unboundedly increase the candidate set (selection is capped by `top_n`, not proportional to repo size).
 - Synthesis call uses Feature 07's `StructuredPrompt`/citation contract; a test with a fake provider proves citations are validated against the candidate set's underlying facts exactly as in Feature 08.
 - Result facts (`business_concept`, `business_workflow`, `glossary_term`) are `provenance=hypothesis` with valid `fact_ids`.
+- A `STAGE` object registered in `STAGE_REGISTRY` (after `hotspots`/`code_graph`) runs this feature end-to-end via `project-intel analyze` (Feature 06b), including the LLM-disabled degrade path.
 - `uv run pytest` and `uv run ruff check .` pass.

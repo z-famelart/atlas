@@ -35,6 +35,10 @@ Uses Feature 07's multi-hypothesis schema shape directly — the response schema
 
 Entirely delegated to Feature 07: this feature supplies the fact ids available for citation as part of the bounded input; Feature 07's citation validator rejects any response citing ids outside that set. This feature adds no separate validation logic of its own.
 
+## CLI stage registration (Feature 06b)
+
+This feature exposes a module-level `STAGE: Stage` object (name `"architecture"`) per [06b](06b-minimal-cli.md)'s contract. Its `run()` reads `PipelineContext.llm_provider` — if `None` (LLM disabled, per Feature 07's no-op provider), the stage reports `status=skipped` with the same `not_analyzed: llm_failed` outcome its own spec already requires for a disabled/failed LLM, rather than erroring. Registering it is one import + one entry in `STAGE_REGISTRY`, placed after `code_graph` since it reads that stage's output.
+
 ## Explicitly out of scope for this feature
 
 - Comparing declared (documentation) vs. observed architecture (**Proposition Q84**, P1, not decided in detail) — this feature only interprets the observed graph, it does not read or extract a "declared" architecture from documentation.
@@ -48,4 +52,5 @@ Entirely delegated to Feature 07: this feature supplies the fact ids available f
 - Every stored result fact has `provenance=hypothesis`.
 - A test using a fake `LLMProvider` (per Feature 07's test harness) proves: a response citing a real fact id is accepted and stored; a response citing a fake id is rejected via Feature 07's validator and surfaces as `not_analyzed: llm_failed` for this feature, not silently corrected.
 - A test with LLM disabled (Feature 07's no-op provider) proves the rest of the pipeline still completes, with this feature's section marked `not_analyzed`.
+- A `STAGE` object registered in `STAGE_REGISTRY` (after `code_graph`) runs this feature end-to-end via `project-intel analyze` (Feature 06b), including the LLM-disabled degrade path.
 - `uv run pytest` and `uv run ruff check .` pass.
