@@ -58,6 +58,16 @@ atlas analyze --llm-provider ollama --ollama-model qwen3:14b .
 
 The first is fast and catches obvious breakage; the second is a larger, real-world repository and catches what only shows up at scale (hangs, a stage that assumes a small input, LLM failures that don't reproduce on a tiny fixture). Check the exit code and the per-stage summary, not just "it didn't crash." This practice is what surfaced the need for the logging/verbosity work in [Feature 13](specs/features/13-cli.md) — an opaque `not_analyzed: llm_failed` with no further detail is exactly the kind of thing this step is meant to catch early.
 
+### The globally-installed `atlas` command and MCP server can silently run stale code
+
+`atlas` (and the `atlas mcp-serve` process registered in `~/.claude/mcp.json`, per [Feature 12b](specs/features/12b-global-mcp-server.md)) is installed via `uv tool install`, which by default **copies** the package at install time — merges to `main` after that point are invisible to it until reinstalled. This caused a real incident: several already-merged, already-tested bug fixes (Feature 12c's sort-key fix among them) silently didn't apply to real usage for hours because the installed tool predated the merge. Fixed by installing **editable** instead, so the global command always tracks the repo's current `main`:
+
+```bash
+uv tool install --reinstall --editable .
+```
+
+One remaining caveat even with an editable install: a **long-running** `atlas mcp-serve` process already has the old code loaded into its Python process — editable installs make new invocations pick up changes, they don't hot-reload a process that's already running. After merging anything that touches `mcp_server/` (or anything it imports), the running MCP connection needs to be restarted (reconnect it from the client side, or kill the `atlas mcp-serve` process and let the client relaunch it) before the fix is actually live.
+
 ## Working in this repo right now
 
 Implementation work follows [specs/features/](specs/features/) strictly in order (01 → 13); each feature's spec lists what it depends on, what it must not implement yet (points still **Proposition**/**Ouvert** in Design Decisions.md), and its acceptance criteria. Do not skip ahead or build something two features early just because it seems related — a later feature's spec is the place that resolves what an earlier one deliberately left open. Commit after each feature lands, same as the specs themselves were committed one per feature.
