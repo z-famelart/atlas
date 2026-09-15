@@ -325,3 +325,71 @@ def test_catalogue_description_mentions_big_ball_of_mud():
 def test_catalogue_description_instructs_multi_hypothesis():
     from project_intel.architecture.schema import CATALOGUE_DESCRIPTION
     assert "multiple hypotheses" in CATALOGUE_DESCRIPTION
+
+
+# ---------------------------------------------------------------------------
+# Feature 08b — pattern validation and prompt strengthening
+# ---------------------------------------------------------------------------
+
+
+def test_build_prompt_has_negative_pattern_instruction():
+    prompt = build_prompt([])
+    assert "never" in prompt.instructions.lower()
+    assert "glob" in prompt.instructions.lower()
+    assert "fact_ids" in prompt.instructions
+
+
+def test_stage_rejects_glob_as_pattern_stores_uncatalogued(tmp_path: Path):
+    """A pattern value that's actually a file glob is coerced to uncatalogued, original preserved."""
+    store = _store(tmp_path)
+    run_id = str(uuid.uuid4())
+    f = _graph_fact(store, run_id)
+    bad_pattern = "ggshield/verticals/secret/output/secret_*.py"
+
+    class _GlobProvider:
+        provider_id = "glob"
+        def complete(self, prompt, schema):
+            return LLMCallResult(
+                status="ok",
+                value=ArchitectureResponse(hypotheses=[
+                    ArchitectureHypothesis(pattern=bad_pattern, confidence=0.8, fact_ids=[f.id]),
+                ]),
+            )
+
+    ctx = PipelineContext(
+        store=store, repository_path=tmp_path, run_id=run_id,
+        scope=_SCOPE, llm_provider=_GlobProvider(),
+    )
+    result = STAGE.run(ctx)
+    assert result.status == "ok"
+    stored = list(store.query_facts(type="architecture_hypothesis", run_id=run_id))
+    assert len(stored) == 1
+    assert stored[0].value["pattern"] == "uncatalogued"
+    assert bad_pattern in (stored[0].value["pattern_description"] or "")
+    store.close()
+
+
+def test_stage_valid_pattern_unaffected_by_validation(tmp_path: Path):
+    store = _store(tmp_path)
+    run_id = str(uuid.uuid4())
+    f = _graph_fact(store, run_id)
+
+    class _ValidProvider:
+        provider_id = "valid"
+        def complete(self, prompt, schema):
+            return LLMCallResult(
+                status="ok",
+                value=ArchitectureResponse(hypotheses=[
+                    ArchitectureHypothesis(pattern="layered", confidence=0.8, fact_ids=[f.id]),
+                ]),
+            )
+
+    ctx = PipelineContext(
+        store=store, repository_path=tmp_path, run_id=run_id,
+        scope=_SCOPE, llm_provider=_ValidProvider(),
+    )
+    STAGE.run(ctx)
+    stored = list(store.query_facts(type="architecture_hypothesis", run_id=run_id))
+    assert stored[0].value["pattern"] == "layered"
+    assert stored[0].value["pattern_description"] is None
+    store.close()

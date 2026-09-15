@@ -11,7 +11,7 @@ from ..facts.store import SCHEMA_VERSION
 from ..llm.orchestrator import LLMOrchestrator
 from ..llm.types import BudgetConfig
 from .analyzer import build_prompt, collect_graph_facts
-from .schema import ArchitectureHypothesis, ArchitectureResponse
+from .schema import ArchitectureHypothesis, ArchitectureResponse, normalize_pattern
 
 
 def _hypothesis_to_fact(
@@ -23,15 +23,17 @@ def _hypothesis_to_fact(
     from ..facts.enums import EntityType
     from ..facts.model import EntityRef
 
+    pattern, pattern_description = normalize_pattern(hyp.pattern, hyp.pattern_description)
+
     return Fact(
         id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"{run_id}:architecture:{hyp.pattern}:{hyp.confidence}")),
         type="architecture_hypothesis",
         subject=EntityRef(EntityType.REPOSITORY, repository_id),
         value={
-            "pattern": hyp.pattern,
+            "pattern": pattern,
             "confidence": hyp.confidence,
             "fact_ids": hyp.fact_ids,
-            "pattern_description": hyp.pattern_description,
+            "pattern_description": pattern_description,
         },
         provenance="hypothesis",
         confidence=hyp.confidence,
