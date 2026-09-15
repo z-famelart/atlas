@@ -1,6 +1,6 @@
 ---
 name: atlas-synthesis
-description: Query an Atlas MCP server and write a tailored HTML synthesis document. Two-layer output — relayed Atlas findings with provenance badges, then the agent's own interpretation. Runs `atlas analyze` itself when no facts store exists yet; skips re-analysis if one is already present.
+description: Query an Atlas MCP server and write a tailored HTML synthesis document. Two-layer output — relayed Atlas findings with provenance badges, then the agent's own interpretation. Runs `atlas analyze` itself when no facts store exists yet (self-resolving an Ollama model if none was specified), or when an existing store never had a real LLM attempt; otherwise skips re-analysis.
 ---
 
 # Atlas synthesis agent
@@ -13,18 +13,32 @@ Given a `repo_path`, perform these steps before querying MCP:
 
 1. **Check for an existing facts store.** The fixed output location is `<repo_path>/.atlas-cache/facts.sqlite` — this is the only path `atlas analyze` ever writes to (no `--output` flag exists); it is always derivable from `repo_path` alone.
 
-2. **Run `atlas analyze` only when needed.**
-   - If `.atlas-cache/facts.sqlite` does not exist (first run), or the user explicitly asked for a fresh analysis, run:
-     ```
-     atlas analyze [--llm-provider <provider>] [--ollama-model <model>] [--no-llm] <repo_path>
-     ```
-     Pass through any LLM flags the user specified; omit them otherwise. Wait for the command to finish before continuing.
-   - If the facts store already exists and no fresh run was requested, **skip this step entirely** — do not silently re-run an expensive LLM pass.
-   - A failed/partial `analyze` run (some stages `not_analyzed`) is not a reason to stop — proceed with whatever facts exist, same as for individual `not_analyzed` MCP results below.
+2. **Resolve LLM flags for the `analyze` invocation.**
+   - If the user explicitly passed `--llm-provider`, `--ollama-model`, and/or `--no-llm`, use exactly those — do not second-guess them, skip to step 3.
+   - Otherwise, check whether Ollama is reachable by running `ollama list`.
+     - If the command succeeds and lists at least one model: pick the **first model listed** — read the command's output, skip the header line, take the first whitespace-separated token of the next line. This mirrors `_pick_ollama_model` in `src/project_intel/cli/main.py` exactly (its non-interactive fallback would pick the same model); never invent a model name or guess a tag that isn't actually installed. Remember this model as `<resolved_model>` — it gets passed as `--ollama-model <resolved_model>` in step 4, explicitly, rather than relying on `$OLLAMA_MODEL` being set in this agent's own environment.
+     - If the command fails, or succeeds but lists no models: Ollama is not reachable/usable. Remember this — the `analyze` run (if any) will use `--no-llm`, and the synthesis output must say so prominently (see the note at the end of this step).
+   - **Note this resolution's outcome for later**: whichever branch above was taken, carry it forward — it determines both the flags used in step 4 and, if Ollama was unreachable, the prominent notice required in the "Atlas findings" section (see Provenance rules / HTML output shape below): a note near the *top* of "Atlas findings", not buried in a per-section gap note, stating that Ollama was not reachable, that architecture/domain/onboarding sections were skipped as a result, and that installing/starting Ollama and re-running would produce LLM-backed findings.
 
-3. **Connect to the global MCP server.** The Atlas MCP server is registered globally in `~/.claude/mcp.json` (no path argument — `atlas mcp-serve` starts without a database). Pass `repo_path=<repo_path>` on every tool call; the server derives `<repo_path>/.atlas-cache/facts.sqlite` itself. No per-repository `atlas mcp-serve` invocation needed.
+3. **Decide whether an existing facts store can be trusted, or needs a fresh LLM-backed run.**
+   - If `.atlas-cache/facts.sqlite` does not exist (first run), or the user explicitly asked for a fresh analysis: skip this check, go straight to step 4 (a fresh run is happening regardless).
+   - If the store already exists and no fresh run was explicitly requested: before deciding to skip `analyze`, check whether it ever had a real LLM attempt. Query `stage_run_result` facts for the `architecture`, `domain`, and `onboarding` stages, **across all runs in the store** (not just the latest run):
+     - Via MCP if the server is already reachable at this point; otherwise via `atlas facts query <repo_path> --type stage_run_result --json` (run `atlas facts query --help` first if the exact flags are unclear — this command already exists, do not guess at its interface).
+     - Inspect every returned fact's `value.stage` (filter to `architecture`, `domain`, `onboarding`) and `value.detail`.
+     - **If every one of those facts — or there are none at all for these three stages** — has `value.detail == "not_analyzed: llm_provider not configured"`: LLM was *never once* actually attempted in this store's history. Treat the store as *not* trustworthy for this decision: proceed to step 4 and run `atlas analyze` for real (using the LLM flags/resolved model from step 2, or `--no-llm` if step 2 found Ollama unreachable) even though a store already exists.
+     - **If at least one of those facts has `value.status == "ok"`, or a `value.detail` other than `"not_analyzed: llm_provider not configured"`** (i.e. LLM was genuinely attempted at least once, success or real failure): the store has real signal. Keep 14b's original behavior — **skip `analyze` entirely**, do not silently re-run an expensive LLM pass. Go straight to step 5.
 
-4. Proceed with the MCP query sequence below.
+4. **Run `atlas analyze` when steps 2–3 determined it's needed.**
+   ```
+   atlas analyze [--llm-provider <provider>] [--ollama-model <model>] [--no-llm] <repo_path>
+   ```
+   Use the flags resolved in step 2 (user-supplied flags verbatim; otherwise `--ollama-model <resolved_model>` if Ollama was reachable, or `--no-llm` if not). Wait for the command to finish before continuing.
+
+   A failed/partial `analyze` run (some stages `not_analyzed`) is not a reason to stop — proceed with whatever facts exist, same as for individual `not_analyzed` MCP results below.
+
+5. **Connect to the global MCP server.** The Atlas MCP server is registered globally in `~/.claude/mcp.json` (no path argument — `atlas mcp-serve` starts without a database). Pass `repo_path=<repo_path>` on every tool call; the server derives `<repo_path>/.atlas-cache/facts.sqlite` itself. No per-repository `atlas mcp-serve` invocation needed.
+
+6. Proceed with the MCP query sequence below.
 
 ## MCP query sequence
 
@@ -94,6 +108,7 @@ function showEvidence(el) {
 ```
 
 Content to include in "Atlas findings":
+- If Ollama was not reachable (per the startup sequence's step 2), a prominent notice **at the top of this section**, before the hotspots table — e.g. "Ollama was not reachable when this analysis ran; architecture/domain/onboarding sections were skipped. Install/start Ollama and re-run to get LLM-backed findings." Do not bury this as a per-section gap note.
 - Hotspots table (file, complexity, churn, score)
 - Architecture pattern + confidence (if returned)
 - Domain concepts identified (if returned)
