@@ -247,7 +247,7 @@ def test_llm_disabled_shows_specific_message(tmp_path: Path) -> None:
                 "stage": "architecture",
                 "status": "skipped",
                 "facts_produced": 0,
-                "detail": "llm_provider not configured",
+                "detail": "not_analyzed: llm_disabled",
             },
         ),
     ])

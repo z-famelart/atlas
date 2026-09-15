@@ -83,18 +83,19 @@ def _fact(store: FactStore, run_id: str) -> Fact:
 # ---------------------------------------------------------------------------
 
 
-def test_disabled_provider_returns_llm_failed():
+def test_disabled_provider_returns_llm_disabled():
     result = DisabledProvider().complete(_prompt(), _SimpleResult)
     assert result.status == "not_analyzed"
-    assert result.reason == "llm_failed"
+    assert result.reason == "llm_disabled"
     assert result.value is None
 
 
-def test_disabled_provider_same_as_real_failure():
-    """DisabledProvider must be indistinguishable from a real provider failure."""
+def test_disabled_provider_distinct_from_real_failure():
+    """DisabledProvider's reason must be distinguishable from a genuine provider failure."""
     d = DisabledProvider().complete(_prompt(), _SimpleResult)
     assert d.status == "not_analyzed"
-    assert d.reason == "llm_failed"
+    assert d.reason == "llm_disabled"
+    assert d.reason != "llm_failed"
 
 
 # ---------------------------------------------------------------------------
@@ -386,7 +387,7 @@ def test_orchestrator_disabled_provider(tmp_path: Path):
     orch = _orchestrator(DisabledProvider(), tmp_path)
     result = orch.complete(_prompt(), _SimpleResult)
     assert result.status == "not_analyzed"
-    assert result.reason == "llm_failed"
+    assert result.reason == "llm_disabled"
 
 
 # ---------------------------------------------------------------------------

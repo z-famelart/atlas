@@ -118,7 +118,7 @@ def _gap_message(store: FactStore, run_id: str, stage: str, section: str) -> str
     detail = str(v.get("detail") or "")
     facts_produced = v.get("facts_produced", 0)
 
-    if status == "skipped" and "llm_provider not configured" in detail:
+    if status == "skipped" and "llm_disabled" in detail:
         return _gap_message_html("LLM analysis was disabled for this run.")
     if status in ("skipped", "failed"):
         return _gap_message_html(f"Atlas attempted this analysis but it failed: {detail}.")

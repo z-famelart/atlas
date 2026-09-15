@@ -30,7 +30,7 @@ class Hypothesis:
 class LLMCallResult[T]:
     status: Literal["ok", "not_analyzed"]
     value: T | None = None
-    reason: Literal["llm_failed", "budget_exceeded"] | None = None
+    reason: Literal["llm_failed", "budget_exceeded", "llm_disabled"] | None = None
 
 
 @dataclasses.dataclass(frozen=True, slots=True)

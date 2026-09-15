@@ -211,13 +211,14 @@ class OllamaProvider:
 
 
 class DisabledProvider:
-    """No-op provider — always returns not_analyzed: llm_failed (Décidé Q95).
+    """No-op provider — always returns not_analyzed: llm_disabled (Décidé Q95).
 
     Downstream features handle this the same way as any provider failure,
-    so they need no separate disabled-mode code path.
+    so they need no separate disabled-mode code path, but the reason is
+    distinguishable from a genuine provider failure (Feature 07c).
     """
 
     provider_id = "disabled"
 
     def complete(self, prompt: StructuredPrompt, schema: type[Any]) -> LLMCallResult[Any]:
-        return LLMCallResult(status="not_analyzed", reason="llm_failed")
+        return LLMCallResult(status="not_analyzed", reason="llm_disabled")

@@ -163,6 +163,7 @@ def test_stage_skipped_when_disabled_provider(tmp_path: Path):
     _fact(ctx.store, run_id, "centrality")
     result = STAGE.run(ctx)
     assert result.status == "skipped"
+    assert "llm_disabled" in (result.detail or "")
     ctx.store.close()
 
 
