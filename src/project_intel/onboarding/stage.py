@@ -17,6 +17,18 @@ from .schema import OnboardingPathResponse
 _ANALYZER = "onboarding_path@1.0"
 
 
+def _drop_ungrounded(response: OnboardingPathResponse) -> OnboardingPathResponse:
+    """Drop entry_points/avoid_initially items with no supporting fact_ids (Feature 10b).
+
+    Runs after Feature 07's citation validation (which only checks cited ids exist,
+    and passes trivially when fact_ids is empty) — this removes specific component
+    claims that cite nothing, without rejecting the rest of the response.
+    """
+    response.entry_points = [e for e in response.entry_points if e.fact_ids]
+    response.avoid_initially = [a for a in response.avoid_initially if a.fact_ids]
+    return response
+
+
 def _path_to_fact(
     response: OnboardingPathResponse,
     run_id: str,
@@ -94,7 +106,8 @@ class _OnboardingStage:
 
             repo_id = str(ctx.repository_path.resolve())
             now = datetime.now(UTC)
-            fact = _path_to_fact(result.value, ctx.run_id, repo_id, now)
+            grounded = _drop_ungrounded(result.value)
+            fact = _path_to_fact(grounded, ctx.run_id, repo_id, now)
             ctx.store.insert_facts([fact])
             return StageRunResult(name=self.name, status="ok", facts_produced=1)
 

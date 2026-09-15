@@ -14,6 +14,7 @@ _INPUT_FACT_TYPES = (
     "architecture_hypothesis",
     "business_workflow",
     "business_concept",
+    "symbol_defined",
 )
 
 _INSTRUCTIONS = """\
@@ -31,6 +32,11 @@ Rules:
 - fact_ids: top-level citations — ids from the provided facts that most influenced this path.
 - All fact_ids fields must only contain ids from the provided facts — do not invent ids.
 - If evidence is sparse, lower confidence and list gaps in open_questions rather than guessing.
+- Any claim about a specific named component (an entry_points or avoid_initially item) must cite,
+  in that item's own fact_ids, the specific fact(s) that support that exact claim — not just any
+  fact from the input set. Do not assert that a capability or feature is absent, unconfigured, or
+  not implemented unless the provided facts positively support that absence; if you cannot point to
+  a fact that supports it, leave the claim out rather than guessing.
 """
 
 

@@ -111,10 +111,23 @@ def test_collect_input_facts_reads_from_store_only(tmp_path: Path):
     store.close()
 
 
+def test_collect_input_facts_includes_symbol_defined(tmp_path: Path):
+    """Feature 10b: the model must see which symbols actually exist."""
+    store = _store(tmp_path)
+    run_id = str(uuid.uuid4())
+    f = _fact(store, run_id, "symbol_defined")
+    facts = collect_input_facts(store)
+    assert any(x.id == f.id for x in facts)
+    store.close()
+
+
 def test_collect_input_facts_includes_all_upstream_types(tmp_path: Path):
     store = _store(tmp_path)
     run_id = str(uuid.uuid4())
-    types = ["centrality", "hotspot_score", "architecture_hypothesis", "business_workflow", "business_concept"]
+    types = [
+        "centrality", "hotspot_score", "architecture_hypothesis",
+        "business_workflow", "business_concept", "symbol_defined",
+    ]
     inserted = [_fact(store, run_id, t) for t in types]
     facts = collect_input_facts(store)
     ids = {f.id for f in facts}
@@ -141,6 +154,18 @@ def test_build_prompt_contains_fact_ids(tmp_path: Path):
     assert f.id in prompt.content
     assert prompt.category == "onboarding"
     assert prompt.schema_version == "onboarding@1.0"
+    store.close()
+
+
+def test_build_prompt_forbids_unsupported_claims(tmp_path: Path):
+    """Feature 10b: prompt must require citations for component claims and forbid
+    unsupported absence/capability claims."""
+    store = _store(tmp_path)
+    _fact(store, str(uuid.uuid4()), "centrality")
+    facts = collect_input_facts(store)
+    prompt = build_prompt(facts)
+    assert "cite" in prompt.instructions.lower()
+    assert "absent" in prompt.instructions.lower() or "unconfigured" in prompt.instructions.lower()
     store.close()
 
 
@@ -267,6 +292,81 @@ def test_stage_invalid_citation_rejected(tmp_path: Path):
     assert result.status == "skipped"
     assert "llm_failed" in (result.detail or "")
 
+    stored = list(store.query_facts(type="onboarding_path", run_id=run_id))
+    assert stored == []
+    store.close()
+
+
+# ---------------------------------------------------------------------------
+# Stage — ungrounded component-claim filter (Feature 10b)
+# ---------------------------------------------------------------------------
+
+
+def test_stage_drops_ungrounded_items_keeps_grounded(tmp_path: Path):
+    """An entry_point/avoid_initially item with empty fact_ids is dropped; a sibling
+    item with valid fact_ids in the same response is still stored."""
+    store = _store(tmp_path)
+    run_id = str(uuid.uuid4())
+    real_fact = _fact(store, run_id, "centrality")
+
+    response = OnboardingPathResponse(
+        entry_points=[
+            EntryPoint(component="src/main.py", fact_ids=[real_fact.id], rationale="high centrality"),
+            EntryPoint(component="src/ghost.py", fact_ids=[], rationale="unsupported claim"),
+        ],
+        recommended_workflow=WorkflowRef(description="Follow the main pipeline", fact_ids=[real_fact.id]),
+        avoid_initially=[
+            AvoidItem(component="src/legacy.py", fact_ids=[real_fact.id], rationale="low relevance"),
+            AvoidItem(component="src/team.py", fact_ids=[], rationale="not configured"),
+        ],
+        time_boxed_understanding=TimeBoxed(thirty_minutes="Read main.py", two_hours="Trace the pipeline"),
+        open_questions=["What external services does this depend on?"],
+        confidence=0.8,
+        fact_ids=[real_fact.id],
+    )
+
+    class _MixedProvider:
+        provider_id = "mixed"
+        def complete(self, prompt, schema):
+            return LLMCallResult(status="ok", value=response)
+
+    ctx = PipelineContext(
+        store=store, repository_path=tmp_path, run_id=run_id,
+        scope=_SCOPE, llm_provider=_MixedProvider(),
+    )
+    result = STAGE.run(ctx)
+    assert result.status == "ok"
+
+    stored = next(iter(store.query_facts(type="onboarding_path", run_id=run_id)))
+    entry_components = [e["component"] for e in stored.value["entry_points"]]
+    avoid_components = [a["component"] for a in stored.value["avoid_initially"]]
+    assert entry_components == ["src/main.py"]
+    assert "src/ghost.py" not in entry_components
+    assert avoid_components == ["src/legacy.py"]
+    assert "src/team.py" not in avoid_components
+    store.close()
+
+
+def test_ungrounded_filter_runs_after_citation_validation(tmp_path: Path):
+    """The Feature 10b filter is additive: a response citing a nonexistent fact_id is
+    still rejected by Feature 07's citation validation exactly as before, before the
+    stage-local empty-fact_ids filter ever runs."""
+    store = _store(tmp_path)
+    run_id = str(uuid.uuid4())
+    _fact(store, run_id, "centrality")
+
+    class _BadProvider:
+        provider_id = "bad"
+        def complete(self, prompt, schema):
+            return LLMCallResult(status="ok", value=_valid_response(["ghost-id-does-not-exist"]))
+
+    ctx = PipelineContext(
+        store=store, repository_path=tmp_path, run_id=run_id,
+        scope=_SCOPE, llm_provider=_BadProvider(),
+    )
+    result = STAGE.run(ctx)
+    assert result.status == "skipped"
+    assert "llm_failed" in (result.detail or "")
     stored = list(store.query_facts(type="onboarding_path", run_id=run_id))
     assert stored == []
     store.close()
