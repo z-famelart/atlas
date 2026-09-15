@@ -20,7 +20,7 @@ Separately, confirmed by reading `src/project_intel/cli/main.py`: when no `--oll
 
 ## Depends on
 
-Feature 14/14b (agent-driven synthesis, already implemented — this changes only the "Prerequisites / startup sequence" section of the agent definition). [Feature 06c](06c-stage-run-persistence.md) (`stage_run_result` facts, already implemented — this is what lets the agent tell "this store never had a real LLM run" apart from "LLM ran and found nothing," the same distinction Feature 11c already surfaces in the HTML report).
+Feature 14/14b (agent-driven synthesis, already implemented — this changes only the "Prerequisites / startup sequence" section of the agent definition). [Feature 06c](06c-stage-run-persistence.md) (`stage_run_result` facts, already implemented — this is what lets the agent tell "this store never had a real LLM run" apart from "LLM ran and found nothing," the same distinction Feature 11c already surfaces in the HTML report). [Feature 07c](07c-disabled-provider-reason.md) — must land alongside this feature; without it, `DisabledProvider`'s `detail` string is indistinguishable from a genuine failure and this feature's core detection has nothing reliable to check.
 
 ## Goal
 
@@ -43,8 +43,10 @@ Before deciding whether `analyze` needs to run, and before constructing the `atl
 
 Before skipping `analyze` because `.atlas-cache/facts.sqlite` already exists (14b's rule), query it for `stage_run_result` facts (Feature 06c) for the LLM-backed stages (`architecture`, `domain`, `onboarding`), across all runs, not just the latest:
 
-- If **any** run has a `stage_run_result` for these stages with `status="ok"` or `status in ("skipped","failed")` with a `detail` that is *not* `"not_analyzed: llm_provider not configured"` (i.e., LLM was actually attempted at least once, whether it succeeded or genuinely failed) — the store has real signal. Skip re-running, exactly as 14b already does; Feature 11c's own cross-run fallback will already surface the best available result.
-- If **every** `stage_run_result` for these stages, across every run in the store, shows `detail="not_analyzed: llm_provider not configured"` (i.e., LLM was *never once* attempted) — and Ollama is reachable per the check above — run `atlas analyze` now, with a real provider, even though a store already technically exists. This is not "silently re-running an expensive pass" (14b's original concern, still valid) — it's "running the pass that was never actually run," which is a different situation the original rule didn't distinguish.
+- If **any** run has a `stage_run_result` for these stages with `status="ok"` or `status in ("skipped","failed")` with a `detail` that is *not* `"not_analyzed: llm_disabled"` (i.e., LLM was actually attempted at least once, whether it succeeded or genuinely failed) — the store has real signal. Skip re-running, exactly as 14b already does; Feature 11c's own cross-run fallback will already surface the best available result.
+- If **every** `stage_run_result` for these stages, across every run in the store, shows `detail="not_analyzed: llm_disabled"` (i.e., LLM was *never once* attempted) — and Ollama is reachable per the check above — run `atlas analyze` now, with a real provider, even though a store already technically exists. This is not "silently re-running an expensive pass" (14b's original concern, still valid) — it's "running the pass that was never actually run," which is a different situation the original rule didn't distinguish.
+
+**Depends on [Feature 07c](07c-disabled-provider-reason.md)** for this detection to actually work: `DisabledProvider` must return a `reason` distinguishable from a genuine failure (`"llm_disabled"` vs `"llm_failed"`) for the `detail` string this feature checks to ever actually appear — found and fixed together, since 14c's own verification surfaced the gap in Feature 07's shipped `DisabledProvider`.
 - If no `stage_run_result` facts exist at all for these stages (a store from before Feature 06c landed, or a very old run) — treat this the same as the "never attempted" case above: don't assume, check by running once.
 
 ## Explicitly out of scope for this feature
