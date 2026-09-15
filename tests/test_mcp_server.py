@@ -13,6 +13,7 @@ from project_intel.facts.model import EntityRef, Evidence, Fact
 from project_intel.facts.refs import FileRef
 from project_intel.facts.store import SCHEMA_VERSION, FactStore
 from project_intel.mcp_server import create_server, queries
+from project_intel.mcp_server.server import _db_path, _missing, _open_store
 
 _RUN = "test-run"
 _REPO = "test-repo"
@@ -277,16 +278,11 @@ def test_no_mutation(store: FactStore, tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_create_server(store: FactStore, tmp_path: Path) -> None:
-    """Server instantiates and lists tools without any CLI process running."""
-    db_path = tmp_path / "facts.sqlite"
-    # reuse already-created store path
-    store2 = FactStore(db_path)
-    store2.close()
-
-    server = create_server(db_path)
-    # MCPServer exposes registered tools via list_tools (sync context)
+def test_create_server() -> None:
+    """Global server instantiates with no arguments and lists all 7 tools."""
     import asyncio
+
+    server = create_server()
 
     async def _list() -> list[str]:
         result = await server.list_tools()
@@ -303,6 +299,72 @@ def test_create_server(store: FactStore, tmp_path: Path) -> None:
         "where_to_start",
     }
     assert expected == set(tool_names)
+
+
+# ---------------------------------------------------------------------------
+# Global server helpers: db_path derivation, open_store, missing-store error
+# ---------------------------------------------------------------------------
+
+
+def test_db_path_derivation(tmp_path: Path) -> None:
+    """db_path is always <repo_path>/.atlas-cache/facts.sqlite."""
+    result = _db_path(str(tmp_path))
+    assert result == tmp_path / ".atlas-cache" / "facts.sqlite"
+
+
+def test_open_store_missing_returns_none(tmp_path: Path) -> None:
+    """_open_store returns None when no facts.sqlite exists at the derived path."""
+    assert _open_store(str(tmp_path)) is None
+
+
+def test_open_store_returns_store_when_present(tmp_path: Path) -> None:
+    """_open_store opens a FactStore when the database exists."""
+    db = tmp_path / ".atlas-cache" / "facts.sqlite"
+    db.parent.mkdir()
+    FactStore(db).close()  # create the file
+
+    store = _open_store(str(tmp_path))
+    assert store is not None
+    store.close()
+
+
+def test_missing_store_error_json(tmp_path: Path) -> None:
+    """Missing store returns structured JSON with expected_path and hint."""
+    import json as _json
+
+    err = _json.loads(_missing(str(tmp_path)))
+    assert err["error"] == "no facts store found"
+    assert str(tmp_path / ".atlas-cache" / "facts.sqlite") in err["expected_path"]
+    assert "atlas analyze" in err["hint"]
+
+
+def test_multi_repo_isolation(tmp_path: Path) -> None:
+    """Two different repo_paths open their own store independently."""
+    repo_a = tmp_path / "repo_a"
+    repo_b = tmp_path / "repo_b"
+    for repo in (repo_a, repo_b):
+        (repo / ".atlas-cache").mkdir(parents=True)
+
+    store_a = FactStore(repo_a / ".atlas-cache" / "facts.sqlite")
+    store_b = FactStore(repo_b / ".atlas-cache" / "facts.sqlite")
+    _fact(store_a, "hotspot_score", "src/only_in_a.py", value={"combined_score": 0.9})
+    _fact(store_b, "hotspot_score", "src/only_in_b.py", value={"combined_score": 0.8})
+    store_a.close()
+    store_b.close()
+
+    opened_a = _open_store(str(repo_a))
+    opened_b = _open_store(str(repo_b))
+    assert opened_a is not None and opened_b is not None
+
+    hotspots_a = queries.get_hotspots(opened_a, top_n=5)
+    hotspots_b = queries.get_hotspots(opened_b, top_n=5)
+    opened_a.close()
+    opened_b.close()
+
+    ids_a = {r["subject"]["id"] for r in hotspots_a}
+    ids_b = {r["subject"]["id"] for r in hotspots_b}
+    assert ids_a == {"src/only_in_a.py"}
+    assert ids_b == {"src/only_in_b.py"}
 
 
 # ---------------------------------------------------------------------------

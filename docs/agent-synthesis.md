@@ -18,7 +18,7 @@ claude --agent atlas-synthesis "Synthesize /path/to/repo for a newcomer joining 
 The agent will:
 1. Check for an existing facts store at `/path/to/repo/.atlas-cache/facts.sqlite`.
 2. Run `atlas analyze /path/to/repo` if no store exists yet (skipped on subsequent runs).
-3. Start `atlas mcp-serve /path/to/repo/.atlas-cache/facts.sqlite` (always the explicit, derived path).
+3. Use the global MCP server (`atlas mcp-serve`, registered once in `~/.claude/mcp.json`) with `repo_path` passed on each tool call — no separate `mcp-serve` invocation per repo.
 4. Query the MCP server and write `atlas-synthesis.html` in the current directory.
 
 Pass LLM flags through if needed:
@@ -60,6 +60,6 @@ Then invoke it in an interactive session:
 
 | Symptom | Likely cause |
 |---------|-------------|
-| "MCP server not reachable" | Agent couldn't start `atlas mcp-serve` — check `atlas` is on PATH |
+| MCP tools not found | `atlas mcp-serve` not registered in `~/.claude/mcp.json`, or `atlas` not on PATH |
 | All sections say `not_analyzed` | LLM stages failed during `analyze` — re-run with `-v` for detail |
 | Empty hotspots table | Repository has no Git history or no supported language files |

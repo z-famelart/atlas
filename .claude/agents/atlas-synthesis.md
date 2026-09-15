@@ -22,11 +22,7 @@ Given a `repo_path`, perform these steps before querying MCP:
    - If the facts store already exists and no fresh run was requested, **skip this step entirely** — do not silently re-run an expensive LLM pass.
    - A failed/partial `analyze` run (some stages `not_analyzed`) is not a reason to stop — proceed with whatever facts exist, same as for individual `not_analyzed` MCP results below.
 
-3. **Start the MCP server.** Always use the explicit, derived path — never rely on `mcp-serve`'s own CLI default (its default argument points at `.atlas/facts.sqlite`, which differs from where `analyze` actually writes):
-   ```
-   atlas mcp-serve <repo_path>/.atlas-cache/facts.sqlite
-   ```
-   Note the server's URL/socket for the MCP connection.
+3. **Connect to the global MCP server.** The Atlas MCP server is registered globally in `~/.claude/mcp.json` (no path argument — `atlas mcp-serve` starts without a database). Pass `repo_path=<repo_path>` on every tool call; the server derives `<repo_path>/.atlas-cache/facts.sqlite` itself. No per-repository `atlas mcp-serve` invocation needed.
 
 4. Proceed with the MCP query sequence below.
 

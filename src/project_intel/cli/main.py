@@ -390,12 +390,16 @@ def facts_query(
             click.echo(f"{f.type:<30} {f.subject.type.value:<12} {f.subject.id}")
 
 @main.command("mcp-serve")
-@click.argument("db_path", default=".atlas/facts.sqlite", type=click.Path())
 @click.option("--port", default=8765, type=int, help="Port (reserved for future SSE transport).")
-def mcp_serve(db_path: str, port: int) -> None:
-    """Start the MCP server for AI agent access."""
+def mcp_serve(port: int) -> None:
+    """Start the MCP server for AI agent access.
+
+    Global server — no database path needed at startup. Every tool call
+    carries a repo_path argument; the server derives
+    <repo_path>/.atlas-cache/facts.sqlite on each call.
+    """
     from ..mcp_server import run_server
-    run_server(db_path, port=port)
+    run_server(port=port)
 
 
 

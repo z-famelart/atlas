@@ -93,41 +93,46 @@ atlas facts query --type business_concept /path/to/repo
 Atlas ships a read-only MCP server with 7 primitives a coding agent can query
 live (`get_component`, `get_dependencies`, `get_hotspots`, `where_to_start`, …).
 
-### A. Start the server manually (one-shot)
+The server is **global** — register it once and it works for every repository.
+Each tool call carries a `repo_path` argument; the server opens
+`<repo_path>/.atlas-cache/facts.sqlite` on demand.
 
-```bash
-atlas mcp-serve /path/to/repo/.atlas-cache/facts.sqlite
-```
+### A. Register it once, globally
 
-The server runs over stdio and prints its address. Use this for testing.
-
-### B. Register it in your Claude Code project
-
-Add a `.mcp.json` at the root of the project where you want Atlas available:
+Add or edit `~/.claude/mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "atlas": {
       "command": "atlas",
-      "args": ["mcp-serve", "/path/to/repo/.atlas-cache/facts.sqlite"]
+      "args": ["mcp-serve"]
     }
   }
 }
 ```
 
-Replace `/path/to/repo` with the absolute path to the analyzed repository.
-Claude Code picks this up automatically; no restart needed.
+That's the only config you ever need. No per-project `.mcp.json`.
 
-> **Note**: always pass the full explicit path. `atlas mcp-serve`'s own default
-> argument (`facts.sqlite`) differs from where `atlas analyze` actually writes
-> (`.atlas-cache/facts.sqlite`); never rely on either default.
+### B. Start the server manually (testing / debugging)
+
+```bash
+atlas mcp-serve
+```
+
+The server runs over stdio. Claude Code manages this automatically when using
+the config above.
 
 ### C. Verify the connection
 
-In a Claude Code session, the MCP tools appear under the atlas namespace.
-Ask Claude: *"use the atlas MCP to tell me where to start in this codebase"* —
-it should call `where_to_start()` and return an oriented summary.
+In a Claude Code session, pass `repo_path` to any Atlas tool:
+
+```
+use atlas MCP to tell me where to start in /path/to/repo
+```
+
+Claude will call `where_to_start(repo_path="/path/to/repo")` and return an
+oriented summary drawn from the facts store at that path.
 
 ---
 
@@ -150,7 +155,7 @@ The agent definition is in `.claude/agents/atlas-synthesis.md`.
 
 ### B. Invoke it
 
-In an interactive Claude Code session (with the MCP server already wired up):
+In an interactive Claude Code session:
 
 ```
 /agent atlas-synthesis
@@ -166,8 +171,8 @@ claude --agent atlas-synthesis \
 The agent will:
 1. Check whether `.atlas-cache/facts.sqlite` already exists for the repo.
 2. If not (first run), run `atlas analyze <repo_path>` itself.
-3. Start `atlas mcp-serve <repo_path>/.atlas-cache/facts.sqlite`.
-4. Query the MCP server and write `atlas-synthesis.html` to the current directory.
+3. Use the global MCP server (registered in `~/.claude/mcp.json`) — no manual `atlas mcp-serve` needed.
+4. Query the server with `repo_path=<repo_path>` and write `atlas-synthesis.html` to the current directory.
 
 On subsequent runs against the same repo it skips step 2 (no hidden re-analysis cost).
 
@@ -189,7 +194,7 @@ The file has two visually distinct sections:
 |---------|-------------|-----|
 | `not_analyzed: llm_failed` | Ollama not running or model not pulled | `ollama pull qwen3:14b` then retry |
 | `not_analyzed: llm_failed` (with `-v`) | Citation hallucination — model inventing fact IDs | Switch model or use `--llm-provider claude-code` |
-| MCP tools not showing in Claude Code | `.mcp.json` path wrong or server not reachable | Verify path, run `atlas mcp-serve <path>` manually to confirm |
+| MCP tools not showing in Claude Code | `~/.claude/mcp.json` missing or `atlas` not on PATH | Run `atlas mcp-serve` manually to confirm it starts; check `which atlas` |
 | Empty hotspots | Repo has no Git history | Run `git init && git add . && git commit` first |
 | HTML report opens blank | Browser blocked local file scripts | Use Firefox, or `python3 -m http.server` in the same directory |
 
@@ -205,7 +210,7 @@ atlas analyze --ollama-model qwen3:14b /path/to/repo
 atlas facts query /path/to/repo
 
 # Serve for agent queries
-atlas mcp-serve /path/to/repo/.atlas-cache/facts.sqlite
+atlas mcp-serve  # global server, no path needed
 
 # Self-serve synthesis (agent handles everything)
 claude --agent atlas-synthesis "Synthesize /path/to/repo for a new team member"
