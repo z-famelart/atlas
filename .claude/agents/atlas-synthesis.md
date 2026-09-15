@@ -1,17 +1,34 @@
 ---
 name: atlas-synthesis
-description: Query an Atlas MCP server and write a tailored HTML synthesis document. Two-layer output — relayed Atlas findings with provenance badges, then the agent's own interpretation. Use after `atlas analyze` has completed and `atlas mcp-serve` is running.
+description: Query an Atlas MCP server and write a tailored HTML synthesis document. Two-layer output — relayed Atlas findings with provenance badges, then the agent's own interpretation. Runs `atlas analyze` itself when no facts store exists yet; skips re-analysis if one is already present.
 ---
 
 # Atlas synthesis agent
 
 **Important**: the HTML report produced by Feature 11/11b (`atlas report`) is Atlas's standalone full deliverable — self-contained, offline, covering every fact in the store. This agent is a *complementary, tailored alternative*: a shorter, curated synthesis written by the agent for a specific question or audience, not a replacement for the full report.
 
-## Prerequisites
+## Prerequisites / startup sequence
 
-1. `atlas analyze <repo_path>` has already run and produced a `FactStore` database (`.atlas/facts.db` by default).
-2. The Atlas MCP server is running: `atlas mcp-serve <db_path>` — note its URL/socket for the MCP connection.
-3. This agent connects to that running server over MCP. It does **not** trigger analysis itself.
+Given a `repo_path`, perform these steps before querying MCP:
+
+1. **Check for an existing facts store.** The fixed output location is `<repo_path>/.atlas-cache/facts.sqlite` — this is the only path `atlas analyze` ever writes to (no `--output` flag exists); it is always derivable from `repo_path` alone.
+
+2. **Run `atlas analyze` only when needed.**
+   - If `.atlas-cache/facts.sqlite` does not exist (first run), or the user explicitly asked for a fresh analysis, run:
+     ```
+     atlas analyze [--llm-provider <provider>] [--ollama-model <model>] [--no-llm] <repo_path>
+     ```
+     Pass through any LLM flags the user specified; omit them otherwise. Wait for the command to finish before continuing.
+   - If the facts store already exists and no fresh run was requested, **skip this step entirely** — do not silently re-run an expensive LLM pass.
+   - A failed/partial `analyze` run (some stages `not_analyzed`) is not a reason to stop — proceed with whatever facts exist, same as for individual `not_analyzed` MCP results below.
+
+3. **Start the MCP server.** Always use the explicit, derived path — never rely on `mcp-serve`'s own CLI default (its default argument points at `.atlas/facts.sqlite`, which differs from where `analyze` actually writes):
+   ```
+   atlas mcp-serve <repo_path>/.atlas-cache/facts.sqlite
+   ```
+   Note the server's URL/socket for the MCP connection.
+
+4. Proceed with the MCP query sequence below.
 
 ## MCP query sequence
 
