@@ -6,6 +6,7 @@ import dataclasses
 import hashlib
 import importlib.resources
 import json
+import math
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -313,32 +314,194 @@ def _symbol_label(f: Fact) -> str:
     return f.subject.id
 
 
+_COMMUNITY_TOP_N = 20
+_BUBBLE_MIN_R = 8.0
+_BUBBLE_MAX_R = 50.0
+_EDGE_MIN_WIDTH = 1.0
+_EDGE_MAX_WIDTH = 8.0
+_HUE_LIGHT = (227, 242, 253)  # light blue
+_HUE_DARK = (13, 71, 161)  # dark blue
+
+
+def _evidence_json_multi(facts: list[Fact]) -> str:
+    """Same shape as `_evidence_json`, concatenated across several facts (a community
+    isn't a single Fact, so its evidence is the union of its member facts' evidence)."""
+    evs = []
+    for fact in facts:
+        for ev in fact.evidence:
+            d: dict[str, Any] = {
+                "kind": ev.kind,
+                "source_analyzer": ev.source_analyzer,
+                "retrieved_at": ev.retrieved_at.isoformat(),
+            }
+            d.update(dataclasses.asdict(ev.ref))
+            evs.append(d)
+    return json.dumps(evs, ensure_ascii=False)
+
+
+def _lerp_color(t: float, low: tuple[int, int, int], high: tuple[int, int, int]) -> str:
+    t = max(0.0, min(1.0, t))
+    r = round(low[0] + (high[0] - low[0]) * t)
+    g = round(low[1] + (high[1] - low[1]) * t)
+    b = round(low[2] + (high[2] - low[2]) * t)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _render_community_graph(
+    communities: list[Fact],
+    centrality: list[Fact],
+    edges_source: list[Fact],
+) -> tuple[str, int]:
+    """Build the inline SVG community bubble graph. Returns (svg_html, omitted_count)."""
+    by_id: dict[Any, list[Fact]] = {}
+    for f in communities:
+        cid = (f.value or {}).get("community_id", f.subject.id)
+        by_id.setdefault(cid, []).append(f)
+
+    centrality_by_file: dict[str, float] = {}
+    centrality_fact_by_file: dict[str, Fact] = {}
+    for f in centrality:
+        centrality_by_file[f.subject.id] = _centrality_combined(f)
+        centrality_fact_by_file[f.subject.id] = f
+
+    file_to_community: dict[str, Any] = {}
+    for cid, facts in by_id.items():
+        for f in facts:
+            file_to_community[f.subject.id] = cid
+
+    ranked = sorted(by_id.items(), key=lambda kv: (-len(kv[1]), str(kv[0])))
+    selected = ranked[:_COMMUNITY_TOP_N]
+    omitted = len(ranked) - len(selected)
+    selected_ids = {cid for cid, _ in selected}
+
+    sizes = {cid: len(facts) for cid, facts in selected}
+    importances = {
+        cid: sum(centrality_by_file.get(p, 0.0) for p in (f.subject.id for f in facts))
+        for cid, facts in selected
+    }
+
+    # Inter-community edge weights (directed, then merged into one undirected weight per
+    # pair for rendering — same "both endpoints must be selected" rule as System Map).
+    edge_weights: dict[tuple[Any, Any], int] = {}
+    for f in edges_source:
+        src = f.subject.id
+        tgt = f.object.id if f.object else None
+        if tgt is None:
+            continue
+        ca = file_to_community.get(src)
+        cb = file_to_community.get(tgt)
+        if ca is None or cb is None or ca == cb:
+            continue
+        if ca not in selected_ids or cb not in selected_ids:
+            continue
+        key = tuple(sorted((ca, cb), key=str))
+        edge_weights[key] = edge_weights.get(key, 0) + 1
+
+    # Deterministic layout order: by community_id, not by size/rank.
+    layout_order = sorted(selected_ids, key=str)
+    n = len(layout_order)
+    cx, cy, layout_r = 300, 300, 220
+    positions: dict[Any, tuple[float, float]] = {}
+    for i, cid in enumerate(layout_order):
+        angle = 2 * math.pi * i / n if n else 0.0
+        positions[cid] = (cx + layout_r * math.cos(angle), cy + layout_r * math.sin(angle))
+
+    max_size = max(sizes.values()) if sizes else 1
+    radius_scale = _BUBBLE_MAX_R / (max_size**0.5) if max_size else 0.0
+
+    imp_values = list(importances.values())
+    min_imp = min(imp_values) if imp_values else 0.0
+    max_imp = max(imp_values) if imp_values else 0.0
+
+    max_weight = max(edge_weights.values()) if edge_weights else 0
+
+    edge_svg: list[str] = []
+    for (ca, cb), weight in edge_weights.items():
+        x1, y1 = positions[ca]
+        x2, y2 = positions[cb]
+        width = (
+            _EDGE_MIN_WIDTH + (_EDGE_MAX_WIDTH - _EDGE_MIN_WIDTH) * (weight / max_weight)
+            if max_weight
+            else _EDGE_MIN_WIDTH
+        )
+        edge_svg.append(
+            f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
+            f'stroke="#9fa8da" stroke-width="{width:.1f}" />'
+        )
+
+    bubble_svg: list[str] = []
+    for cid, facts in selected:
+        x, y = positions[cid]
+        size = sizes[cid]
+        importance = importances[cid]
+        r = max(_BUBBLE_MIN_R, radius_scale * (size**0.5))
+        t = (importance - min_imp) / (max_imp - min_imp) if max_imp > min_imp else 0.5
+        fill = _lerp_color(t, _HUE_LIGHT, _HUE_DARK)
+
+        member_files = [f.subject.id for f in facts]
+        evidence_facts = list(facts) + [
+            centrality_fact_by_file[p] for p in member_files if p in centrality_fact_by_file
+        ]
+        ev = _evidence_json_multi(evidence_facts)
+        label = _esc(f"C{cid} — {size} files, importance {round(importance)}")
+        bubble_svg.append(
+            f'<g class="community-bubble" data-evidence=\'{ev}\' onclick="showEvidence(this)" '
+            f'style="cursor:pointer">'
+            f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{r:.1f}" fill="{fill}" stroke="#1a237e" '
+            f'stroke-width="1" />'
+            f'<text x="{x:.1f}" y="{y:.1f}" text-anchor="middle" dominant-baseline="middle" '
+            f'font-size="9" fill="#000">{label}</text>'
+            f'</g>'
+        )
+
+    svg = (
+        '<svg class="community-graph" viewBox="0 0 600 600" xmlns="http://www.w3.org/2000/svg">'
+        + "".join(edge_svg)
+        + "".join(bubble_svg)
+        + "</svg>"
+    )
+    return svg, omitted
+
+
 def _render_code_map(store: FactStore, run_id: str) -> str:
     symbols, symbols_fb = _query_fallback(store, "symbol_defined", run_id)
     communities, communities_fb = _query_fallback(store, "community", run_id)
     if not symbols and not communities:
         return _section("Code Map", _gap_message(store, run_id, "code_graph", "code-graph"), "code-map")
 
-    rows = []
-    for f in communities[:30]:
-        label = f"Community {(f.value or {}).get('community_id', f.subject.id)}"
-        rows.append(_fact_row(label, f))
-    for f in symbols[:30]:
-        rows.append(_fact_row(_symbol_label(f), f))
+    rows = [_fact_row(_symbol_label(f), f) for f in symbols[:30]]
+
+    graph_html = ""
+    parts: list[str] = []
+    if communities:
+        centrality, _centrality_fb = _query_fallback(store, "centrality", run_id)
+        edges_run_id = communities_fb[0] if communities_fb else run_id
+        edges_source: list[Fact] = []
+        for rel_type in ("imports", "calls"):
+            edges_source.extend(store.query_facts(type=rel_type, run_id=edges_run_id))
+
+        graph_html, omitted = _render_community_graph(communities, centrality, edges_source)
+
+        n_communities = len({(f.value or {}).get("community_id", f.subject.id) for f in communities})
+        shown = min(n_communities, _COMMUNITY_TOP_N)
+        parts.append(
+            f"{n_communities} community cluster{'s' if n_communities != 1 else ''} detected; "
+            f"{shown} largest shown"
+            + (f", {omitted} smaller communities not pictured." if omitted else ".")
+        )
+        if communities_fb:
+            parts.append(
+                _fallback_note("community data", communities_fb, f"{n_communities} community(ies) found")
+            )
 
     n_sym = len(symbols)
-    parts: list[str] = []
     if n_sym:
         parts.append(f"{n_sym} symbol{'s' if n_sym != 1 else ''} defined.")
-    if communities:
-        parts.append(f"{len(communities)} community cluster{'s' if len(communities) != 1 else ''} detected.")
     if symbols_fb:
         parts.append(_fallback_note("symbol data", symbols_fb, f"{n_sym} symbol(s) found"))
-    if communities_fb:
-        parts.append(_fallback_note("community data", communities_fb, f"{len(communities)} community(ies) found"))
     prose = _narrative(" ".join(parts)) if parts else ""
 
-    body = prose + '<div class="fact-list">' + "".join(rows) + "</div>"
+    body = prose + graph_html + '<div class="fact-list">' + "".join(rows) + "</div>"
     return _section("Code Map", body, "code-map")
 
 
@@ -553,6 +716,7 @@ h2 { color: #1a237e; font-size: 1.2rem; margin-bottom: 0.5rem; }
 .conf-fill { height: 100%; background: #42a5f5; }
 .not-analyzed { color: #888; font-style: italic; }
 pre.mermaid { background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; padding: 1rem; font-size: 0.8rem; overflow-x: auto; }
+svg.community-graph { width: 100%; max-width: 600px; height: auto; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; }
 #evidence-panel { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: #263238; color: #eceff1; padding: 1rem; max-height: 40vh; overflow-y: auto; z-index: 200; font-size: 0.85rem; }
 #evidence-panel pre { margin: 0; white-space: pre-wrap; }
 #evidence-close { float: right; cursor: pointer; font-size: 1.2rem; }
