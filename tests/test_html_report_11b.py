@@ -57,7 +57,7 @@ def test_no_mermaid_hint_in_output(tmp_path: Path) -> None:
     """Acceptance criterion 1: no .mermaid-hint text in generated HTML."""
     s = FactStore(tmp_path / "facts.db")
     s.insert_facts([
-        _make_fact("centrality", "src/core.py", {"score": 0.9}),
+        _make_fact("centrality", "src/core.py", {"in_degree": 0.9, "out_degree": 0.1}),
     ])
     html = generate_report(s, _RUN, output_dir=tmp_path).read_text()
     assert "mermaid-hint" not in html
@@ -76,7 +76,7 @@ def test_mermaid_script_inlined(tmp_path: Path) -> None:
     """Mermaid JS is embedded inline in the HTML."""
     s = FactStore(tmp_path / "facts.db")
     s.insert_facts([
-        _make_fact("centrality", "src/core.py", {"score": 0.9}),
+        _make_fact("centrality", "src/core.py", {"in_degree": 0.9, "out_degree": 0.1}),
     ])
     html = generate_report(s, _RUN, output_dir=tmp_path).read_text()
     # mermaid.initialize call proves the init script is present
@@ -95,7 +95,7 @@ def test_discovery_section_has_narrative(tmp_path: Path) -> None:
     s = FactStore(tmp_path / "facts.db")
     s.insert_facts([
         _make_fact("language_detected", "src/main.py", {"language": "Python"}),
-        _make_fact("technology_detected", "pyproject.toml", {"technology": "fastapi"}),
+        _make_fact("technology_detected", "pyproject.toml", {"category": "framework", "name": "fastapi"}),
     ])
     html = generate_report(s, _RUN, output_dir=tmp_path).read_text()
     # Narrative paragraph must appear before the fact-list in executive-summary
@@ -111,8 +111,8 @@ def test_hotspots_section_has_narrative(tmp_path: Path) -> None:
     """Acceptance criterion 3b: Hotspots section has section-narrative."""
     s = FactStore(tmp_path / "facts.db")
     s.insert_facts([
-        _make_fact("hotspot_score", "src/main.py", {"score": 0.87}),
-        _make_fact("hotspot_score", "src/utils.py", {"score": 0.42}),
+        _make_fact("hotspot_score", "src/main.py", {"combined": 0.87}),
+        _make_fact("hotspot_score", "src/utils.py", {"combined": 0.42}),
     ])
     html = generate_report(s, _RUN, output_dir=tmp_path).read_text()
     hs_start = html.index('id="hotspots"')
@@ -127,7 +127,7 @@ def test_narrative_before_fact_list(tmp_path: Path) -> None:
     """Narrative <p> must appear before the <div class="fact-list">."""
     s = FactStore(tmp_path / "facts.db")
     s.insert_facts([
-        _make_fact("hotspot_score", "src/core.py", {"score": 0.75}),
+        _make_fact("hotspot_score", "src/core.py", {"combined": 0.75}),
     ])
     html = generate_report(s, _RUN, output_dir=tmp_path).read_text()
     hs_start = html.index('id="hotspots"')

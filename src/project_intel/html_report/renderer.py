@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import importlib.resources
 import json
 from datetime import UTC, datetime
@@ -61,6 +62,72 @@ def _not_analyzed(section: str) -> str:
     return f'<p class="not-analyzed">Not analyzed — no {section} facts in this run.</p>'
 
 
+def _gap_message_html(msg: str) -> str:
+    return f'<p class="not-analyzed">{_esc(msg)}</p>'
+
+
+def _node_id(path: str) -> str:
+    """Stable, collision-free Mermaid node id derived from a full file path."""
+    return "n_" + hashlib.sha1(path.encode("utf-8")).hexdigest()[:10]
+
+
+# ---------------------------------------------------------------------------
+# Cross-run fallback (part E) and stage-gap messages (part F)
+# ---------------------------------------------------------------------------
+
+
+def _query_fallback(
+    store: FactStore, type_: str, run_id: str
+) -> tuple[list[Fact], tuple[str, datetime] | None]:
+    """Query facts of `type_` for `run_id`; if empty, fall back to the most recent
+    other run that has any. Returns (facts, fallback_info) where fallback_info is
+    (run_id, created_at) of the run the facts came from, or None if no fallback used."""
+    facts = list(store.query_facts(type=type_, run_id=run_id))
+    if facts:
+        return facts, None
+    all_facts = list(store.query_facts(type=type_))
+    if not all_facts:
+        return [], None
+    by_run: dict[str, list[Fact]] = {}
+    for f in all_facts:
+        by_run.setdefault(f.run_id, []).append(f)
+    best_run = max(by_run, key=lambda rid: max(f.created_at for f in by_run[rid]))
+    chosen = by_run[best_run]
+    latest = max(f.created_at for f in chosen)
+    return chosen, (best_run, latest)
+
+
+def _fallback_note(section_desc: str, fallback: tuple[str, datetime], noun: str) -> str:
+    run_id, ts = fallback
+    return (
+        f"No {section_desc} for this run. Showing results from a previous analysis "
+        f"(run `{run_id[:8]}`, {ts.strftime('%Y-%m-%d %H:%M')}) — {noun}."
+    )
+
+
+def _gap_message(store: FactStore, run_id: str, stage: str, section: str) -> str:
+    """Part F: distinct not-analyzed states, based on stage_run_result facts."""
+    facts, _fallback = _query_fallback(store, "stage_run_result", run_id)
+    stage_facts = [f for f in facts if (f.value or {}).get("stage") == stage]
+    if not stage_facts:
+        return _not_analyzed(section)
+
+    v = stage_facts[-1].value or {}
+    status = v.get("status")
+    detail = str(v.get("detail") or "")
+    facts_produced = v.get("facts_produced", 0)
+
+    if status == "skipped" and "llm_provider not configured" in detail:
+        return _gap_message_html("LLM analysis was disabled for this run.")
+    if status in ("skipped", "failed"):
+        return _gap_message_html(f"Atlas attempted this analysis but it failed: {detail}.")
+    if status == "ok" and facts_produced == 0:
+        return _gap_message_html(
+            f"Atlas analyzed this repository for {section} and found nothing to report."
+        )
+    return _not_analyzed(section)
+
+
 def _esc(s: str) -> str:
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
@@ -104,12 +171,14 @@ def _section(title: str, body: str, section_id: str) -> str:
 
 
 def _render_executive_summary(store: FactStore, run_id: str) -> str:
-    langs = list(store.query_facts(type="language_detected", run_id=run_id))
-    techs = list(store.query_facts(type="technology_detected", run_id=run_id))
-    repos = list(store.query_facts(type="git_repository_detected", run_id=run_id))
+    langs, langs_fb = _query_fallback(store, "language_detected", run_id)
+    techs, techs_fb = _query_fallback(store, "technology_detected", run_id)
+    repos, repos_fb = _query_fallback(store, "git_repository_detected", run_id)
 
     if not langs and not techs and not repos:
-        return _section("Executive Summary", _not_analyzed("discovery"), "executive-summary")
+        return _section(
+            "Executive Summary", _gap_message(store, run_id, "discovery", "discovery"), "executive-summary"
+        )
 
     rows = []
     for f in repos:
@@ -118,7 +187,7 @@ def _render_executive_summary(store: FactStore, run_id: str) -> str:
         name = (f.value or {}).get("language", f.subject.id)
         rows.append(_fact_row(f"Language: {name}", f))
     for f in techs:
-        name = (f.value or {}).get("technology", f.subject.id)
+        name = (f.value or {}).get("name", f.subject.id)
         rows.append(_fact_row(f"Technology: {name}", f))
 
     # Narrative
@@ -126,7 +195,7 @@ def _render_executive_summary(store: FactStore, run_id: str) -> str:
         (f.value or {}).get("language", f.subject.id) for f in langs
     ]
     tech_names = [
-        (f.value or {}).get("technology", f.subject.id) for f in techs
+        (f.value or {}).get("name", f.subject.id) for f in techs
     ]
     parts: list[str] = []
     if lang_names:
@@ -134,31 +203,67 @@ def _render_executive_summary(store: FactStore, run_id: str) -> str:
         parts.append(
             f"Atlas analyzed {n} language{'s' if n != 1 else ''}: {_join_list(lang_names)}."
         )
+    if langs_fb:
+        parts.append(_fallback_note("language data", langs_fb, f"{len(lang_names)} language(s) found"))
     if tech_names:
         n = len(tech_names)
         parts.append(
             f"Detected {n} {'technologies' if n != 1 else 'technology'}: {_join_list(tech_names)}."
         )
+    if techs_fb:
+        parts.append(_fallback_note("technology data", techs_fb, f"{len(tech_names)} technology(ies) found"))
+    if repos_fb:
+        parts.append(_fallback_note("repository data", repos_fb, f"{len(repos)} repository(ies) found"))
     prose = _narrative(" ".join(parts)) if parts else ""
 
     body = prose + '<div class="fact-list">' + "".join(rows) + "</div>"
     return _section("Executive Summary", body, "executive-summary")
 
 
-def _render_system_map(store: FactStore, run_id: str) -> str:
-    centrality = list(store.query_facts(type="centrality", run_id=run_id))
-    if not centrality:
-        return _section("System Map", _not_analyzed("code-graph"), "system-map")
+def _centrality_combined(f: Fact) -> float:
+    v = f.value or {}
+    return float(v.get("in_degree", 0)) + float(v.get("out_degree", 0))
 
-    top = sorted(centrality, key=lambda f: float((f.value or {}).get("score", 0)), reverse=True)[:20]
-    mermaid = "graph LR\n" + "\n".join(f"  {_esc(f.subject.id.split('/')[-1])}[{_esc(f.subject.id.split('/')[-1])}]" for f in top[:10])
+
+def _render_system_map(store: FactStore, run_id: str) -> str:
+    centrality, centrality_fb = _query_fallback(store, "centrality", run_id)
+    if not centrality:
+        return _section("System Map", _gap_message(store, run_id, "code_graph", "code-graph"), "system-map")
+
+    top = sorted(centrality, key=_centrality_combined, reverse=True)[:20]
+    diagram_nodes = top[:10]
+    node_ids = {f.subject.id: _node_id(f.subject.id) for f in diagram_nodes}
+    node_lines = [
+        f"  {node_ids[f.subject.id]}[{_esc(f.subject.id.split('/')[-1])}]" for f in diagram_nodes
+    ]
+
+    # Real edges: imports/calls relations between two nodes already in the diagram.
+    edge_run_id = centrality_fb[0] if centrality_fb else run_id
+    edge_lines: list[str] = []
+    seen_edges: set[tuple[str, str]] = set()
+    for rel_type in ("imports", "calls"):
+        for f in store.query_facts(type=rel_type, run_id=edge_run_id):
+            src = f.subject.id
+            tgt = f.object.id if f.object else None
+            if src not in node_ids or tgt not in node_ids:
+                continue
+            key = (node_ids[src], node_ids[tgt])
+            if key in seen_edges:
+                continue
+            seen_edges.add(key)
+            edge_lines.append(f"  {node_ids[src]} --> {node_ids[tgt]}")
+
+    mermaid = "graph LR\n" + "\n".join(node_lines + edge_lines)
     rows = [_fact_row(f.subject.id, f) for f in top]
 
     top_file = top[0].subject.id if top else None
-    prose = _narrative(
+    parts = [
         f"{len(centrality)} file{'s' if len(centrality) != 1 else ''} ranked by centrality."
         + (f" Top file: {top_file}." if top_file else "")
-    )
+    ]
+    if centrality_fb:
+        parts.append(_fallback_note("code-graph data", centrality_fb, f"{len(centrality)} file(s) found"))
+    prose = _narrative(" ".join(parts))
 
     body = (
         prose
@@ -169,9 +274,9 @@ def _render_system_map(store: FactStore, run_id: str) -> str:
 
 
 def _render_architecture(store: FactStore, run_id: str) -> str:
-    facts = list(store.query_facts(type="architecture_hypothesis", run_id=run_id))
+    facts, fb = _query_fallback(store, "architecture_hypothesis", run_id)
     if not facts:
-        return _section("Architecture", _not_analyzed("architecture_hypothesis"), "architecture")
+        return _section("Architecture", _gap_message(store, run_id, "architecture", "architecture"), "architecture")
 
     rows = []
     prose_parts: list[str] = []
@@ -190,23 +295,36 @@ def _render_architecture(store: FactStore, run_id: str) -> str:
                 f"Atlas identified the {pattern} pattern with {f.confidence:.0%} confidence."
             )
 
+    if fb:
+        prose_parts.append(_fallback_note("architecture data", fb, f"{len(facts)} hypotheses found"))
+
     prose = _narrative(" ".join(prose_parts)) if prose_parts else ""
     body = prose + '<div class="fact-list">' + "".join(rows) + "</div>"
     return _section("Architecture", body, "architecture")
 
 
+def _symbol_label(f: Fact) -> str:
+    v = f.value or {}
+    name = v.get("name")
+    kind = v.get("kind")
+    file_ = v.get("file")
+    if name and kind and file_:
+        return f"{name} ({kind}) — {file_}"
+    return f.subject.id
+
+
 def _render_code_map(store: FactStore, run_id: str) -> str:
-    symbols = list(store.query_facts(type="symbol_defined", run_id=run_id))
-    communities = list(store.query_facts(type="community", run_id=run_id))
+    symbols, symbols_fb = _query_fallback(store, "symbol_defined", run_id)
+    communities, communities_fb = _query_fallback(store, "community", run_id)
     if not symbols and not communities:
-        return _section("Code Map", _not_analyzed("code-graph"), "code-map")
+        return _section("Code Map", _gap_message(store, run_id, "code_graph", "code-graph"), "code-map")
 
     rows = []
     for f in communities[:30]:
         label = f"Community {(f.value or {}).get('community_id', f.subject.id)}"
         rows.append(_fact_row(label, f))
     for f in symbols[:30]:
-        rows.append(_fact_row(f.subject.id, f))
+        rows.append(_fact_row(_symbol_label(f), f))
 
     n_sym = len(symbols)
     parts: list[str] = []
@@ -214,6 +332,10 @@ def _render_code_map(store: FactStore, run_id: str) -> str:
         parts.append(f"{n_sym} symbol{'s' if n_sym != 1 else ''} defined.")
     if communities:
         parts.append(f"{len(communities)} community cluster{'s' if len(communities) != 1 else ''} detected.")
+    if symbols_fb:
+        parts.append(_fallback_note("symbol data", symbols_fb, f"{n_sym} symbol(s) found"))
+    if communities_fb:
+        parts.append(_fallback_note("community data", communities_fb, f"{len(communities)} community(ies) found"))
     prose = _narrative(" ".join(parts)) if parts else ""
 
     body = prose + '<div class="fact-list">' + "".join(rows) + "</div>"
@@ -221,36 +343,43 @@ def _render_code_map(store: FactStore, run_id: str) -> str:
 
 
 def _render_hotspots(store: FactStore, run_id: str) -> str:
-    facts = list(store.query_facts(type="hotspot_score", run_id=run_id))
+    facts, fb = _query_fallback(store, "hotspot_score", run_id)
     if not facts:
-        return _section("Hotspots", _not_analyzed("hotspot_score"), "hotspots")
+        return _section("Hotspots", _gap_message(store, run_id, "hotspots", "hotspots"), "hotspots")
 
-    top = sorted(facts, key=lambda f: float((f.value or {}).get("score", 0)), reverse=True)[:30]
+    top = sorted(facts, key=lambda f: float((f.value or {}).get("combined", 0)), reverse=True)[:30]
     rows = [
         _fact_row(
-            f"{f.subject.id} (score: {float((f.value or {}).get('score', 0)):.2f})",
+            f"{f.subject.id} (score: {float((f.value or {}).get('combined', 0)):.2f})",
             f,
         )
         for f in top
     ]
 
     top_file = top[0].subject.id
-    top_score = float((top[0].value or {}).get("score", 0))
+    top_score = float((top[0].value or {}).get("combined", 0))
     n = len(facts)
-    prose = _narrative(
-        f"The {n} highest-scoring file{'s' if n != 1 else ''} are ranked by hotspot score."
-        f" Top hotspot: {top_file} ({top_score:.2f})."
-    )
+    parts = [
+        (
+            f"The {n} highest-scoring file{'s' if n != 1 else ''} are ranked by hotspot score."
+            f" Top hotspot: {top_file} ({top_score:.2f})."
+        ),
+    ]
+    if fb:
+        parts.append(_fallback_note("hotspot data", fb, f"{n} file(s) found"))
+    prose = _narrative(" ".join(parts))
 
     body = prose + '<div class="fact-list">' + "".join(rows) + "</div>"
     return _section("Hotspots", body, "hotspots")
 
 
 def _render_domain(store: FactStore, run_id: str) -> str:
-    concepts = list(store.query_facts(type="business_concept", run_id=run_id))
-    workflows = list(store.query_facts(type="business_workflow", run_id=run_id))
+    concepts, concepts_fb = _query_fallback(store, "business_concept", run_id)
+    workflows, workflows_fb = _query_fallback(store, "business_workflow", run_id)
     if not concepts and not workflows:
-        return _section("Domain Understanding", _not_analyzed("domain"), "domain-understanding")
+        return _section(
+            "Domain Understanding", _gap_message(store, run_id, "domain", "domain"), "domain-understanding"
+        )
 
     rows = []
     for f in concepts:
@@ -272,6 +401,10 @@ def _render_domain(store: FactStore, run_id: str) -> str:
     if workflows:
         wf_names = [(f.value or {}).get("name", f.subject.id) for f in workflows[:3]]
         prose_parts.append(f"Workflows: {', '.join(wf_names)}.")
+    if concepts_fb:
+        prose_parts.append(_fallback_note("domain concept data", concepts_fb, f"{len(concepts)} concept(s) found"))
+    if workflows_fb:
+        prose_parts.append(_fallback_note("workflow data", workflows_fb, f"{len(workflows)} workflow(s) found"))
     prose = _narrative(" ".join(prose_parts)) if prose_parts else ""
 
     body = prose + '<div class="fact-list">' + "".join(rows) + "</div>"
@@ -283,15 +416,18 @@ def _not_analyzed_section(title: str, section_id: str) -> str:
 
 
 def _render_git_evolution(store: FactStore, run_id: str) -> str:
-    churn = list(store.query_facts(type="git_churn", run_id=run_id))
-    cochange = list(store.query_facts(type="git_co_change", run_id=run_id))
+    churn, churn_fb = _query_fallback(store, "git_churn", run_id)
+    cochange, cochange_fb = _query_fallback(store, "git_co_change", run_id)
     if not churn and not cochange:
-        return _section("Git Evolution", _not_analyzed("git_churn"), "git-evolution")
+        return _section("Git Evolution", _gap_message(store, run_id, "git", "git"), "git-evolution")
 
     top_churn = sorted(churn, key=lambda f: int((f.value or {}).get("commits", 0)), reverse=True)[:20]
     rows = [_fact_row(f"{f.subject.id} ({(f.value or {}).get('commits', '?')} commits)", f) for f in top_churn]
     for f in cochange[:10]:
+        co = (f.value or {}).get("co_occurrences")
         label = f"Co-change: {f.subject.id} ↔ {f.object.id if f.object else '?'}"
+        if co is not None:
+            label += f" ({co} co-occurrences)"
         rows.append(_fact_row(label, f))
 
     parts: list[str] = []
@@ -301,6 +437,10 @@ def _render_git_evolution(store: FactStore, run_id: str) -> str:
         top_file = top_churn[0].subject.id
         top_commits = (top_churn[0].value or {}).get("commits", "?")
         parts.append(f"Highest-churn file: {top_file} ({top_commits} commits).")
+    if churn_fb:
+        parts.append(_fallback_note("git churn data", churn_fb, f"{len(churn)} file(s) found"))
+    if cochange_fb:
+        parts.append(_fallback_note("git co-change data", cochange_fb, f"{len(cochange)} pair(s) found"))
     prose = _narrative(" ".join(parts)) if parts else ""
 
     body = prose + '<div class="fact-list">' + "".join(rows) + "</div>"
@@ -308,22 +448,39 @@ def _render_git_evolution(store: FactStore, run_id: str) -> str:
 
 
 def _render_risks(store: FactStore, run_id: str) -> str:
-    cycles = list(store.query_facts(type="dependency_cycle", run_id=run_id))
+    cycles, fb = _query_fallback(store, "dependency_cycle", run_id)
     if not cycles:
-        return _section("Risks / Anomalies", _not_analyzed("dependency_cycle"), "risks-anomalies")
+        return _section("Risks / Anomalies", _gap_message(store, run_id, "code_graph", "dependency_cycle"), "risks-anomalies")
 
-    rows = [_fact_row(f"Dependency cycle: {f.subject.id}", f) for f in cycles]
+    rows = []
+    for f in cycles:
+        members = (f.value or {}).get("cycle_members")
+        if members:
+            label = "Cycle: " + " → ".join(str(m) for m in members)
+        else:
+            label = f"Dependency cycle: {f.subject.id}"
+        rows.append(_fact_row(label, f))
     n = len(cycles)
-    prose = _narrative(f"{n} dependency cycle{'s' if n != 1 else ''} detected.")
+    parts = [f"{n} dependency cycle{'s' if n != 1 else ''} detected."]
+    if fb:
+        parts.append(_fallback_note("dependency cycle data", fb, f"{n} cycle(s) found"))
+    prose = _narrative(" ".join(parts))
 
     body = prose + '<div class="fact-list">' + "".join(rows) + "</div>"
     return _section("Risks / Anomalies", body, "risks-anomalies")
 
 
+def _ensure_period(s: str) -> str:
+    s = s.rstrip()
+    return s if s.endswith((".", "!", "?")) else s + "."
+
+
 def _render_onboarding(store: FactStore, run_id: str) -> str:
-    paths = list(store.query_facts(type="onboarding_path", run_id=run_id))
+    paths, fb = _query_fallback(store, "onboarding_path", run_id)
     if not paths:
-        return _not_analyzed_section("Onboarding Path", "onboarding-path")
+        return _section(
+            "Onboarding Path", _gap_message(store, run_id, "onboarding", "onboarding"), "onboarding-path"
+        )
 
     rows = [_fact_row(f.subject.id, f) for f in paths]
     prose_parts: list[str] = []
@@ -331,14 +488,16 @@ def _render_onboarding(store: FactStore, run_id: str) -> str:
         v = f.value or {}
         rw_desc = v.get("recommended_workflow", {}).get("description", "")
         if rw_desc:
-            prose_parts.append(str(rw_desc))
+            prose_parts.append(_ensure_period(str(rw_desc)))
         tb = v.get("time_boxed_understanding", {})
         thirty = tb.get("thirty_minutes", "")
         two_hrs = tb.get("two_hours", "")
         if thirty:
-            prose_parts.append(f"First 30 minutes: {thirty}")
+            prose_parts.append(_ensure_period(f"First 30 minutes: {thirty}"))
         if two_hrs:
-            prose_parts.append(f"First 2 hours: {two_hrs}")
+            prose_parts.append(_ensure_period(f"First 2 hours: {two_hrs}"))
+    if fb:
+        prose_parts.append(_fallback_note("onboarding data", fb, f"{len(paths)} path(s) found"))
     prose = _narrative(" ".join(prose_parts)) if prose_parts else ""
 
     body = prose + '<div class="fact-list">' + "".join(rows) + "</div>"
@@ -346,16 +505,17 @@ def _render_onboarding(store: FactStore, run_id: str) -> str:
 
 
 def _render_glossary(store: FactStore, run_id: str) -> str:
-    terms = list(store.query_facts(type="glossary_term", run_id=run_id))
+    terms, fb = _query_fallback(store, "glossary_term", run_id)
     if not terms:
-        return _section("Glossary", _not_analyzed("glossary_term"), "glossary")
+        return _section("Glossary", _gap_message(store, run_id, "domain", "glossary"), "glossary")
 
     rows = []
     for f in terms:
         term = (f.value or {}).get("term", f.subject.id)
         definition = (f.value or {}).get("definition", "")
         rows.append(_fact_row(f"{term}: {definition}", f))
-    body = '<div class="fact-list">' + "".join(rows) + "</div>"
+    prose = _narrative(_fallback_note("glossary data", fb, f"{len(terms)} term(s) found")) if fb else ""
+    body = prose + '<div class="fact-list">' + "".join(rows) + "</div>"
     return _section("Glossary", body, "glossary")
 
 

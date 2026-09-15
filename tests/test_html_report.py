@@ -54,9 +54,9 @@ def store_with_discovery_and_hotspots(tmp_path: Path) -> FactStore:
     s = FactStore(tmp_path / "facts.db")
     s.insert_facts([
         _make_fact("language_detected", "src/main.py", {"language": "Python"}),
-        _make_fact("technology_detected", "pyproject.toml", {"technology": "fastapi"}),
-        _make_fact("hotspot_score", "src/main.py", {"score": 0.87}),
-        _make_fact("hotspot_score", "src/utils.py", {"score": 0.42}),
+        _make_fact("technology_detected", "pyproject.toml", {"category": "framework", "name": "fastapi"}),
+        _make_fact("hotspot_score", "src/main.py", {"combined": 0.87}),
+        _make_fact("hotspot_score", "src/utils.py", {"combined": 0.42}),
     ])
     return s
 
