@@ -18,6 +18,14 @@ identify the architectural pattern(s) that best describe this codebase.
 
 {CATALOGUE_DESCRIPTION}
 
+"microservices" means multiple independently deployed processes/services (separate deployables,
+separate runtimes) communicating over a network — it does not mean a single codebase that happens
+to have a directory or package named services/, service_layer/, or similar. A Django app (or any
+single-process application) with an internal services/ module organizing business logic is not
+microservices merely because of that name. Only use "microservices" if there's actual evidence of
+multiple independently deployed/runnable units (e.g. multiple Dockerfiles, separate deployment
+manifests, separate process entry points) — not just a naming convention.
+
 Rules:
 - Return 1-3 hypotheses ordered by descending confidence.
 - confidence must be a float in [0.0, 1.0].

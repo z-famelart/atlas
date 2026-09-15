@@ -394,3 +394,15 @@ def test_stage_valid_pattern_unaffected_by_validation(tmp_path: Path):
     assert stored[0].value["pattern"] == "layered"
     assert stored[0].value["pattern_description"] is None
     store.close()
+
+
+# ---------------------------------------------------------------------------
+# Feature 08c — microservices vs. services/ folder clarification
+# ---------------------------------------------------------------------------
+
+
+def test_build_prompt_clarifies_microservices_not_a_folder_name():
+    prompt = build_prompt([])
+    instructions = prompt.instructions.lower()
+    assert "independently deployed" in instructions
+    assert "services/" in prompt.instructions
