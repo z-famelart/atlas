@@ -8,13 +8,16 @@ import subprocess
 import sys
 import tomllib
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import click
 
 from ..discovery.scope import ScopeConfig
-from ..facts.store import FactStore
+from ..facts.enums import EntityType
+from ..facts.model import EntityRef, Fact
+from ..facts.store import SCHEMA_VERSION, FactStore
 from ..hotspots.weights import HotspotWeights
 from ..html_report import generate_report as _generate_report
 from ..llm.providers import ClaudeCodeProvider, DisabledProvider, OllamaProvider
@@ -130,10 +133,36 @@ def _run_stages_rich(
 
 def _run_stage_safe(stage: Any, ctx: PipelineContext) -> StageRunResult:
     try:
-        return stage.run(ctx)
+        result = stage.run(ctx)
     except Exception as exc:
         logger.debug("Stage %s raised an exception", stage.name, exc_info=True)
-        return StageRunResult(name=stage.name, status="failed", facts_produced=0, detail=str(exc))
+        result = StageRunResult(name=stage.name, status="failed", facts_produced=0, detail=str(exc))
+    _persist_stage_run_result(ctx, result)
+    return result
+
+
+def _persist_stage_run_result(ctx: PipelineContext, result: StageRunResult) -> None:
+    """Record every stage's outcome as a `stage_run_result` fact (Feature 06c)."""
+    repository_id = str(ctx.repository_path.resolve())
+    fact = Fact(
+        id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"{ctx.run_id}:stage_run_result:{result.name}")),
+        type="stage_run_result",
+        subject=EntityRef(EntityType.REPOSITORY, repository_id),
+        value={
+            "stage": result.name,
+            "status": result.status,
+            "facts_produced": result.facts_produced,
+            "detail": result.detail,
+        },
+        provenance="computed",
+        confidence=1.0,
+        source_analyzer="cli.runner@1.0",
+        evidence=(),
+        created_at=datetime.now(UTC),
+        schema_version=SCHEMA_VERSION,
+        run_id=ctx.run_id,
+    )
+    ctx.store.insert_facts([fact])
 
 
 # ---------------------------------------------------------------------------
