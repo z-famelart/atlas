@@ -194,6 +194,18 @@ def test_store_query_no_filter_returns_all(store: FactStore):
     assert len(list(store.query_facts())) == 2
 
 
+def test_latest_run_id_empty_store(store: FactStore):
+    assert store.latest_run_id() is None
+
+
+def test_latest_run_id_picks_greatest_created_at(store: FactStore):
+    older = datetime(2024, 1, 1, tzinfo=UTC)
+    newer = datetime(2024, 6, 1, tzinfo=UTC)
+    store.insert_facts([_make_fact("f1", created_at=older, run_id="run-old")])
+    store.insert_facts([_make_fact("f2", created_at=newer, run_id="run-new")])
+    assert store.latest_run_id() == "run-new"
+
+
 # ---------------------------------------------------------------------------
 # FactStore — evidence round-trip
 # ---------------------------------------------------------------------------

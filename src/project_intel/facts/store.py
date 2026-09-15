@@ -240,6 +240,16 @@ class FactStore:
             rows = session.scalars(stmt).all()
             return iter([_row_to_fact(r) for r in rows])
 
+    def latest_run_id(self) -> str | None:
+        """The run_id of the most recently created fact in this store, or None if empty."""
+        stmt = (
+            select(_FactRow.run_id)
+            .order_by(_FactRow.created_at.desc(), _FactRow.id.desc())
+            .limit(1)
+        )
+        with self._Session() as session:
+            return session.scalars(stmt).first()
+
     def fact_exists(self, fact_id: str) -> bool:
         with self._Session() as session:
             return session.get(_FactRow, fact_id) is not None

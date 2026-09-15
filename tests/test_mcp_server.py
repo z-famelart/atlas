@@ -152,24 +152,24 @@ def test_find_workflow_cap_20(store: FactStore) -> None:
 
 
 def test_get_hotspots_sorted(store: FactStore) -> None:
-    _fact(store, "hotspot_score", "src/a.py", value={"combined_score": 0.9})
-    _fact(store, "hotspot_score", "src/b.py", value={"combined_score": 0.3})
-    _fact(store, "hotspot_score", "src/c.py", value={"combined_score": 0.6})
+    _fact(store, "hotspot_score", "src/a.py", value={"combined": 0.9})
+    _fact(store, "hotspot_score", "src/b.py", value={"combined": 0.3})
+    _fact(store, "hotspot_score", "src/c.py", value={"combined": 0.6})
     result = queries.get_hotspots(store, top_n=10)
-    scores = [r["value"]["combined_score"] for r in result]
+    scores = [r["value"]["combined"] for r in result]
     assert scores == sorted(scores, reverse=True)
 
 
 def test_get_hotspots_cap_50(store: FactStore) -> None:
     for i in range(100):
-        _fact(store, "hotspot_score", f"src/f_{i}.py", value={"combined_score": float(i) / 100})
+        _fact(store, "hotspot_score", f"src/f_{i}.py", value={"combined": float(i) / 100})
     result = queries.get_hotspots(store, top_n=100)
     assert len(result) <= 50
 
 
 def test_get_hotspots_component_filter(store: FactStore) -> None:
-    _fact(store, "hotspot_score", "src/auth/login.py", value={"combined_score": 0.9})
-    _fact(store, "hotspot_score", "src/billing/pay.py", value={"combined_score": 0.8})
+    _fact(store, "hotspot_score", "src/auth/login.py", value={"combined": 0.9})
+    _fact(store, "hotspot_score", "src/billing/pay.py", value={"combined": 0.8})
     result = queries.get_hotspots(store, top_n=10, component="auth")
     assert all("auth" in r["subject"]["id"] for r in result)
 
@@ -185,7 +185,7 @@ def test_get_hotspots_provenance_survives(store: FactStore) -> None:
         store,
         "hotspot_score",
         "src/a.py",
-        value={"combined_score": 0.7, "complexity_score": 0.5},
+        value={"combined": 0.7, "complexity_score": 0.5},
         provenance="computed",
         confidence=0.85,
     )
@@ -255,7 +255,7 @@ def _count_facts(store: FactStore) -> int:
 
 def test_no_mutation(store: FactStore, tmp_path: Path) -> None:
     """Every primitive must be read-only — store fact count unchanged after all calls."""
-    _fact(store, "hotspot_score", "src/a.py", value={"combined_score": 0.5})
+    _fact(store, "hotspot_score", "src/a.py", value={"combined": 0.5})
     _fact(store, "imports", "src/a.py", object_id="src/b.py")
     _fact(store, "business_workflow", "wf1", value={"name": "auth workflow"})
     _fact(store, "language_detected", "src/a.py", value={"language": "Python"})
@@ -347,8 +347,8 @@ def test_multi_repo_isolation(tmp_path: Path) -> None:
 
     store_a = FactStore(repo_a / ".atlas-cache" / "facts.sqlite")
     store_b = FactStore(repo_b / ".atlas-cache" / "facts.sqlite")
-    _fact(store_a, "hotspot_score", "src/only_in_a.py", value={"combined_score": 0.9})
-    _fact(store_b, "hotspot_score", "src/only_in_b.py", value={"combined_score": 0.8})
+    _fact(store_a, "hotspot_score", "src/only_in_a.py", value={"combined": 0.9})
+    _fact(store_b, "hotspot_score", "src/only_in_b.py", value={"combined": 0.8})
     store_a.close()
     store_b.close()
 
@@ -373,7 +373,7 @@ def test_multi_repo_isolation(tmp_path: Path) -> None:
 
 
 def test_where_to_start_fallback(store: FactStore) -> None:
-    _fact(store, "hotspot_score", "src/a.py", value={"combined_score": 0.9})
+    _fact(store, "hotspot_score", "src/a.py", value={"combined": 0.9})
     _fact(store, "centrality", "src/b.py", value={"in_degree": 0.8, "out_degree": 0.1})
     result = queries.where_to_start(store)
     assert len(result) > 0
@@ -383,3 +383,79 @@ def test_where_to_start_uses_onboarding_path(store: FactStore) -> None:
     _fact(store, "onboarding_path", "system", value={"step": 1, "component": "src/a.py"})
     result = queries.where_to_start(store)
     assert any(r["type"] == "onboarding_path" for r in result)
+
+
+# ---------------------------------------------------------------------------
+# Run scoping (Feature 12c) — defaults to latest run, explicit run_id honored
+# ---------------------------------------------------------------------------
+
+
+def _older() -> datetime:
+    return datetime(2024, 1, 1, tzinfo=UTC)
+
+
+def _newer() -> datetime:
+    return datetime(2024, 6, 1, tzinfo=UTC)
+
+
+def _fact_at(
+    store: FactStore,
+    fact_type: str,
+    subject_id: str,
+    created_at: datetime,
+    run_id: str,
+    value=None,
+    object_id: str | None = None,
+) -> Fact:
+    f = Fact(
+        id=str(uuid.uuid4()),
+        type=fact_type,
+        subject=EntityRef(EntityType.FILE, subject_id),
+        object=EntityRef(EntityType.FILE, object_id) if object_id else None,
+        value=value,
+        provenance="computed",  # type: ignore[arg-type]
+        confidence=1.0,
+        source_analyzer="test",
+        created_at=created_at,
+        schema_version=SCHEMA_VERSION,
+        run_id=run_id,
+        evidence=(_ev(subject_id),),
+    )
+    store.insert_facts([f])
+    return f
+
+
+def test_get_hotspots_defaults_to_latest_run(store: FactStore) -> None:
+    _fact_at(store, "hotspot_score", "src/a.py", _older(), "run-old", value={"combined": 0.9})
+    _fact_at(store, "hotspot_score", "src/a.py", _newer(), "run-new", value={"combined": 0.4})
+    result = queries.get_hotspots(store, top_n=10)
+    assert len(result) == 1
+    assert result[0]["run_id"] == "run-new"
+    assert result[0]["value"]["combined"] == 0.4
+
+
+def test_get_hotspots_explicit_run_id(store: FactStore) -> None:
+    _fact_at(store, "hotspot_score", "src/a.py", _older(), "run-old", value={"combined": 0.9})
+    _fact_at(store, "hotspot_score", "src/a.py", _newer(), "run-new", value={"combined": 0.4})
+    result = queries.get_hotspots(store, top_n=10, run_id="run-old")
+    assert len(result) == 1
+    assert result[0]["run_id"] == "run-old"
+    assert result[0]["value"]["combined"] == 0.9
+
+
+def test_get_dependencies_defaults_to_latest_run(store: FactStore) -> None:
+    _fact_at(store, "imports", "src/a.py", _older(), "run-old", object_id="src/old_dep.py")
+    _fact_at(store, "imports", "src/a.py", _newer(), "run-new", object_id="src/new_dep.py")
+    result = queries.get_dependencies(store, "src/a.py")
+    assert {r["object"]["id"] for r in result} == {"src/new_dep.py"}
+
+
+def test_where_to_start_fallback_uses_one_resolved_run_id(store: FactStore) -> None:
+    _fact_at(store, "hotspot_score", "src/a.py", _older(), "run-old", value={"combined": 0.9})
+    _fact_at(store, "centrality", "src/b.py", _older(), "run-old", value={"in_degree": 0.8})
+    _fact_at(store, "hotspot_score", "src/c.py", _newer(), "run-new", value={"combined": 0.7})
+    _fact_at(store, "centrality", "src/d.py", _newer(), "run-new", value={"in_degree": 0.6})
+
+    result = queries.where_to_start(store)
+    run_ids = {r["run_id"] for r in result}
+    assert run_ids == {"run-new"}
