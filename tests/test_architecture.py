@@ -128,7 +128,7 @@ def test_build_prompt_contains_fact_ids(tmp_path: Path):
     f = _graph_fact(store, run_id)
     facts = collect_graph_facts(store)
     prompt = build_prompt(facts)
-    assert f.id in prompt.content
+    assert f.id in prompt.id_map.values()  # cited via short alias
     assert prompt.category == "architecture"
     assert prompt.schema_version == "architecture@1.0"
     store.close()

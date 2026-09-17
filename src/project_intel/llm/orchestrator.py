@@ -15,7 +15,7 @@ import cattrs
 from ..facts.store import FactStore
 from .budget import BudgetTracker
 from .cache import LLMCache, cache_key
-from .citation import validate_citations
+from .citation import resolve_aliases, validate_citations
 from .providers import LLMProvider
 from .types import BudgetConfig, LLMCallResult, StructuredPrompt
 
@@ -32,7 +32,9 @@ class LLMOrchestrator:
         store: FactStore,
         cache: LLMCache,
         budget: BudgetTracker,
+        attempts: int = 2,
     ) -> None:
+        self._attempts = attempts
         self._provider = provider
         self._store = store
         self._cache = cache
@@ -73,20 +75,26 @@ class LLMOrchestrator:
             except Exception:  # noqa: BLE001, S110
                 pass  # stale/corrupt cache entry — fall through to provider
 
-        # 3. Provider call
-        _log.info("LLM call provider=%s category=%s tokens~%d",
-                  self._provider.provider_id, prompt.category, prompt.estimated_input_tokens)
-        result = self._provider.complete(prompt, schema)
-        if result.status != "ok" or result.value is None:
-            _log.warning("LLM call failed provider=%s category=%s reason=%s",
-                         self._provider.provider_id, prompt.category, result.reason)
-            return result
-
-        # 4. Citation validation
-        valid, bad_ids = validate_citations(result.value, self._store)
-        if not valid:
-            _log.warning("Citation validation failed provider=%s category=%s invalid_ids=%s",
-                         self._provider.provider_id, prompt.category, bad_ids)
+        # 3. Provider call + 4. citation validation — local models are sampled, so one
+        # retry recovers most transient schema/citation slips (ponytail: 2 attempts, flat).
+        for attempt in range(1, self._attempts + 1):
+            _log.info("LLM call provider=%s category=%s tokens~%d attempt=%d/%d",
+                      self._provider.provider_id, prompt.category,
+                      prompt.estimated_input_tokens, attempt, self._attempts)
+            result = self._provider.complete(prompt, schema)
+            if result.status != "ok" or result.value is None:
+                _log.warning("LLM call failed provider=%s category=%s reason=%s attempt=%d",
+                             self._provider.provider_id, prompt.category, result.reason, attempt)
+                if result.reason != "llm_failed":
+                    return result  # budget/disabled: retrying cannot help
+                continue
+            resolve_aliases(result.value, prompt.id_map)
+            valid, bad_ids = validate_citations(result.value, self._store)
+            if valid:
+                break
+            _log.warning("Citation validation failed provider=%s category=%s attempt=%d invalid_ids=%s",
+                         self._provider.provider_id, prompt.category, attempt, bad_ids)
+        else:
             return LLMCallResult(status="not_analyzed", reason="llm_failed")
 
         # 5. Store in cache (serialize the value back to JSON for storage)

@@ -187,7 +187,7 @@ def test_build_prompt_category_and_schema():
 def test_build_prompt_contains_fact_id():
     c = CandidateContent(path="src/a.py", content="hello", source_fact_ids=["unique-fact-id"])
     prompt = build_prompt([c])
-    assert "unique-fact-id" in prompt.content
+    assert "unique-fact-id" in prompt.id_map.values()  # cited via short alias
 
 
 def test_build_prompt_empty_candidates():

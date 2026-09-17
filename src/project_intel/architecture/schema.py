@@ -38,7 +38,7 @@ def normalize_pattern(pattern: str, pattern_description: str | None) -> tuple[st
 
 @dataclasses.dataclass
 class ArchitectureHypothesis:
-    pattern: str
+    pattern: str = dataclasses.field(metadata={"enum": _CATALOGUE})  # enforced by the provider's JSON schema
     confidence: float
     fact_ids: list[str]
     pattern_description: str | None = None

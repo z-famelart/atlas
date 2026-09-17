@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import logging
 import subprocess
+import types
 import typing
 import urllib.error
 import urllib.request
@@ -17,6 +19,7 @@ from .types import LLMCallResult, StructuredPrompt
 T = TypeVar("T")
 
 _CONVERTER = cattrs.Converter()
+_log = logging.getLogger(__name__)
 
 
 def _schema_description(schema: type) -> str:
@@ -42,9 +45,8 @@ class LLMProvider(Protocol):
 class ClaudeCodeProvider:
     """Shells out to the `claude` CLI in non-interactive print mode."""
 
-    provider_id = "claude-code"
-
     def __init__(self, model: str = "claude-haiku-4-5-20251001", timeout: int = 120) -> None:
+        self.provider_id = f"claude-code:{model}"  # model is part of the cache key
         self._model = model
         self._timeout = timeout
 
@@ -86,7 +88,7 @@ def _type_to_schema(tp: Any) -> dict:
     if origin is list:
         args = getattr(tp, "__args__", (object,))
         return {"type": "array", "items": _type_to_schema(args[0])}
-    if origin is typing.Union:
+    if origin is typing.Union or isinstance(tp, types.UnionType):
         non_none = [a for a in tp.__args__ if a is not type(None)]
         return _type_to_schema(non_none[0]) if non_none else {}
     if dataclasses.is_dataclass(tp):
@@ -106,6 +108,8 @@ def _dataclass_json_schema(schema: type) -> dict:
     required = []
     for f in dataclasses.fields(schema):  # type: ignore[arg-type]
         props[f.name] = _type_to_schema(hints.get(f.name, str))
+        if "enum" in f.metadata:  # closed vocabulary → constrained decoding, model cannot stray
+            props[f.name]["enum"] = list(f.metadata["enum"])
         if f.default is dataclasses.MISSING and f.default_factory is dataclasses.MISSING:  # type: ignore[misc]
             required.append(f.name)
     result: dict = {"type": "object", "properties": props}
@@ -136,14 +140,13 @@ def suggest_ollama_budget(model: str, base_url: str = "http://localhost:11434") 
 class OllamaProvider:
     """HTTP provider for a local Ollama server."""
 
-    provider_id = "ollama"
-
-    def __init__(self, model: str, base_url: str = "http://localhost:11434", timeout: int = 120) -> None:
+    def __init__(self, model: str, base_url: str = "http://localhost:11434", timeout: int = 600) -> None:
         if not model:
             raise TypeError(
                 "OllamaProvider requires a model name — "
                 "set OLLAMA_MODEL (e.g. qwen2.5:14b) or run with --no-llm."
             )
+        self.provider_id = f"ollama:{model}"  # model is part of the cache key
         self._model = model
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
@@ -176,12 +179,19 @@ class OllamaProvider:
             "Respond with only valid JSON, no markdown, no explanation."
         )
         fmt = _dataclass_json_schema(schema) if dataclasses.is_dataclass(schema) else "json"
+        # Ollama's default num_ctx (4096) silently drops the *start* of a longer prompt —
+        # the instructions and the schema. Size the window to the prompt instead.
+        est_tokens = len(full_prompt) // 4
+        num_ctx = min(65_536, max(8_192, -(-(est_tokens + 4_096) // 1_024) * 1_024))
         payload = json.dumps({
             "model": self._model,
             "prompt": full_prompt,
             "format": fmt,
             "stream": False,
+            "options": {"num_ctx": num_ctx},
         }).encode()
+        _log.info("Ollama call model=%s prompt_chars=%d num_ctx=%d", self._model, len(full_prompt), num_ctx)
+        raw_text = ""
         try:
             req = urllib.request.Request(
                 f"{self._base_url}/api/generate",
@@ -203,10 +213,14 @@ class OllamaProvider:
                     err_body = {}
                 if "not found" in err_body.get("error", "").lower():
                     print(f"Model '{self._model}' not found in Ollama — run: ollama pull {self._model}.")
+            _log.warning("Ollama HTTP %s model=%s: %s", e.code, self._model, e.reason)
             return LLMCallResult(status="not_analyzed", reason="llm_failed")
-        except cattrs.errors.ClassValidationError:
+        except (json.JSONDecodeError, cattrs.errors.ClassValidationError) as e:
+            _log.warning("Ollama response rejected model=%s schema=%s: %s\nresponse head: %.400s",
+                         self._model, schema.__name__, e, raw_text)
             return LLMCallResult(status="not_analyzed", reason="llm_failed")
-        except Exception:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
+            _log.warning("Ollama call failed model=%s: %s: %s", self._model, type(e).__name__, e)
             return LLMCallResult(status="not_analyzed", reason="llm_failed")
 
 

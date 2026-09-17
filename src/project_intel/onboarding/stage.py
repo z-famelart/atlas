@@ -81,7 +81,7 @@ class _OnboardingStage:
             )
 
         try:
-            input_facts = collect_input_facts(ctx.store)
+            input_facts = collect_input_facts(ctx.store, ctx.run_id)
             if not input_facts:
                 return StageRunResult(
                     name=self.name, status="skipped", facts_produced=0,

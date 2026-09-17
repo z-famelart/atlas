@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from ..llm.prompt import alias_ids
 from ..llm.types import StructuredPrompt
 from .selector import CandidateContent
 
@@ -36,6 +37,7 @@ def build_prompt(candidates: list[CandidateContent]) -> StructuredPrompt:
         }
         for c in candidates
     ]
+    id_map = alias_ids(entries, key="fact_id")
     content = json.dumps(entries, default=str)
     return StructuredPrompt(
         instructions=_INSTRUCTIONS,
@@ -43,4 +45,5 @@ def build_prompt(candidates: list[CandidateContent]) -> StructuredPrompt:
         schema_version="domain@1.0",
         category="domain",
         estimated_input_tokens=len(content) // 4,
+        id_map=id_map,
     )

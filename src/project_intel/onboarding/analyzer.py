@@ -2,20 +2,24 @@
 
 from __future__ import annotations
 
-import json
-
 from ..facts.model import Fact
 from ..facts.store import FactStore
+from ..llm.prompt import alias_ids, bounded_json
 from ..llm.types import StructuredPrompt
 
+# Priority order: what survives when the prompt is capped (see llm/prompt.py).
 _INPUT_FACT_TYPES = (
-    "centrality",
-    "hotspot_score",
     "architecture_hypothesis",
     "business_workflow",
     "business_concept",
+    "centrality",
+    "hotspot_score",
     "symbol_defined",
 )
+_RANK_KEY = {  # within a type, most important first
+    "centrality": lambda f: -float((f.value or {}).get("in_degree", 0)),
+    "hotspot_score": lambda f: -float((f.value or {}).get("combined", 0)),
+}
 
 _INSTRUCTIONS = """\
 You are synthesizing an onboarding path for a software engineer joining this codebase.
@@ -40,11 +44,15 @@ Rules:
 """
 
 
-def collect_input_facts(store: FactStore) -> list[Fact]:
-    """Return all synthesis-input facts from Features 05/06/08/09."""
+def collect_input_facts(store: FactStore, run_id: str | None = None) -> list[Fact]:
+    """Return synthesis-input facts from Features 05/06/08/09, each type from its latest run."""
     facts: list[Fact] = []
     for fact_type in _INPUT_FACT_TYPES:
-        facts.extend(store.query_facts(type=fact_type))
+        rid = store.run_id_with(fact_type, run_id)
+        batch = list(store.query_facts(type=fact_type, run_id=rid))
+        if fact_type in _RANK_KEY:
+            batch.sort(key=_RANK_KEY[fact_type])
+        facts.extend(batch)
     return facts
 
 
@@ -58,11 +66,14 @@ def _fact_summary(fact: Fact) -> dict:
 
 
 def build_prompt(facts: list[Fact]) -> StructuredPrompt:
-    content = json.dumps([_fact_summary(f) for f in facts], default=str)
+    summaries = [_fact_summary(f) for f in facts]
+    id_map = alias_ids(summaries)
+    content = bounded_json(summaries, label="onboarding")
     return StructuredPrompt(
         instructions=_INSTRUCTIONS,
         content=content,
         schema_version="onboarding@1.0",
         category="onboarding",
         estimated_input_tokens=len(content) // 4,
+        id_map=id_map,
     )

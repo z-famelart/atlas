@@ -15,6 +15,8 @@ class StructuredPrompt:
     schema_version: str  # bump to invalidate cache
     category: str  # e.g. "architecture", "domain", "onboarding" — for budget tracking
     estimated_input_tokens: int = 0
+    # short alias → real fact id; the model cites aliases, the orchestrator maps them back
+    id_map: dict[str, str] = dataclasses.field(default_factory=dict)
 
 
 @dataclasses.dataclass(frozen=True, slots=True)

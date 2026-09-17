@@ -56,7 +56,7 @@ class _ArchitectureStage:
             )
 
         try:
-            graph_facts = collect_graph_facts(ctx.store)
+            graph_facts = collect_graph_facts(ctx.store, ctx.run_id)
             if not graph_facts:
                 return StageRunResult(
                     name=self.name, status="skipped", facts_produced=0,
@@ -85,8 +85,12 @@ class _ArchitectureStage:
                 _hypothesis_to_fact(hyp, ctx.run_id, repo_id, now)
                 for hyp in result.value.hypotheses
             ]
-            if facts:
-                ctx.store.insert_facts(facts)
+            if not facts:
+                return StageRunResult(
+                    name=self.name, status="skipped", facts_produced=0,
+                    detail="not_analyzed: llm returned no hypotheses",
+                )
+            ctx.store.insert_facts(facts)
             return StageRunResult(name=self.name, status="ok", facts_produced=len(facts))
 
         except Exception as exc:  # noqa: BLE001

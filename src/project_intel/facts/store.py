@@ -240,15 +240,27 @@ class FactStore:
             rows = session.scalars(stmt).all()
             return iter([_row_to_fact(r) for r in rows])
 
-    def latest_run_id(self) -> str | None:
-        """The run_id of the most recently created fact in this store, or None if empty."""
-        stmt = (
-            select(_FactRow.run_id)
-            .order_by(_FactRow.created_at.desc(), _FactRow.id.desc())
-            .limit(1)
-        )
+    def latest_run_id(self, type: str | None = None) -> str | None:
+        """The run_id of the most recently created fact (optionally of `type`), or None if none."""
+        stmt = select(_FactRow.run_id)
+        if type is not None:
+            stmt = stmt.where(_FactRow.type == type)
+        stmt = stmt.order_by(_FactRow.created_at.desc(), _FactRow.id.desc()).limit(1)
         with self._Session() as session:
             return session.scalars(stmt).first()
+
+    def run_id_with(self, type: str, preferred: str | None) -> str | None:
+        """`preferred` if it holds facts of `type`, else the latest run that does (None if no run does).
+
+        Lets a stage run in isolation (`--only domain`) consume the most recent upstream facts
+        instead of finding nothing under its own fresh run_id.
+        """
+        if preferred is not None:
+            stmt = select(_FactRow.id).where(_FactRow.type == type, _FactRow.run_id == preferred).limit(1)
+            with self._Session() as session:
+                if session.scalars(stmt).first() is not None:
+                    return preferred
+        return self.latest_run_id(type=type)
 
     def fact_exists(self, fact_id: str) -> bool:
         with self._Session() as session:

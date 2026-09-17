@@ -51,6 +51,7 @@ def select_candidates(
     run_id: str | None = None,
 ) -> list[CandidateContent]:
     """Return a bounded candidate set for domain synthesis."""
+    run_id = store.run_id_with("hotspot_score", run_id)
     # ── 1. Hotspot files (top_n by combined score) ──────────────────────────
     hotspot_facts = store.query_facts(type="hotspot_score", run_id=run_id)
     scored: list[tuple[float, str, str]] = []  # (score, path, fact_id)

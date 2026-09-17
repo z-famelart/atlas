@@ -46,3 +46,25 @@ def validate_citations(response: Any, store: FactStore) -> tuple[bool, list[str]
         return True, []
     unknown = [fid for fid in cited if not store.fact_exists(fid)]
     return len(unknown) == 0, unknown
+
+
+def resolve_aliases(obj: Any, id_map: dict[str, str]) -> None:
+    """Map aliased ids in every fact_ids list back to real ids, in place (unknown ids untouched)."""
+    if not id_map:
+        return
+    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+        for field in dataclasses.fields(obj):
+            child = getattr(obj, field.name)
+            if field.name == "fact_ids" and isinstance(child, list):
+                child[:] = [id_map.get(str(x), str(x)) for x in child]
+            else:
+                resolve_aliases(child, id_map)
+    elif isinstance(obj, list):
+        for item in obj:
+            resolve_aliases(item, id_map)
+    elif isinstance(obj, dict):
+        for k, v in obj.items():
+            if k == "fact_ids" and isinstance(v, list):
+                v[:] = [id_map.get(str(x), str(x)) for x in v]
+            else:
+                resolve_aliases(v, id_map)

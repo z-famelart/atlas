@@ -151,7 +151,7 @@ def test_build_prompt_contains_fact_ids(tmp_path: Path):
     f = _fact(store, run_id, "centrality")
     facts = collect_input_facts(store)
     prompt = build_prompt(facts)
-    assert f.id in prompt.content
+    assert f.id in prompt.id_map.values()  # cited via short alias
     assert prompt.category == "onboarding"
     assert prompt.schema_version == "onboarding@1.0"
     store.close()
