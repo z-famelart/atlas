@@ -222,3 +222,109 @@ def test_rename_continuity(rename_repo: Path) -> None:
     # The combined commit count should reflect pre-rename history
     total_commits = sum(f.value["commits"] for f in facts)
     assert total_commits >= 2  # at minimum: the rename + one prior edit
+
+
+# ---------------------------------------------------------------------------
+# Feature 04b — path rebasing onto repo_path (subdirectory case)
+# ---------------------------------------------------------------------------
+
+
+_GIT_ENV = {
+    "GIT_AUTHOR_NAME": "Test",
+    "GIT_AUTHOR_EMAIL": "t@t.com",
+    "GIT_COMMITTER_NAME": "Test",
+    "GIT_COMMITTER_EMAIL": "t@t.com",
+    "GIT_AUTHOR_DATE": "2024-01-01T00:00:00Z",
+    "GIT_COMMITTER_DATE": "2024-01-01T00:00:00Z",
+}
+
+
+@pytest.fixture()
+def subdir_repo(tmp_path: Path) -> tuple[Path, Path]:
+    """Git repo rooted at tmp_path with a backend/ subdirectory as the analysis target.
+
+    Returns (repo_root, backend_path).
+    """
+    env = {**_GIT_ENV, "HOME": str(tmp_path), "PATH": "/usr/bin:/bin"}
+
+    def git(*args: str) -> None:
+        subprocess.run(["git", *args], cwd=tmp_path, env=env, check=True, capture_output=True)
+
+    git("init", "-b", "main")
+    git("config", "user.email", "t@t.com")
+    git("config", "user.name", "Test")
+
+    backend = tmp_path / "backend"
+    backend.mkdir()
+    (backend / "app.py").write_text("x = 1\n")
+    git("add", ".")
+    git("commit", "-m", "add backend/app.py")
+
+    (backend / "app.py").write_text("x = 2\n")
+    git("add", ".")
+    git("commit", "-m", "edit backend/app.py")
+
+    return tmp_path, backend
+
+
+def test_churn_paths_rebased_for_subdir(subdir_repo: tuple[Path, Path]) -> None:
+    """git_churn subject.id must be repo_path-relative, not git-root-relative."""
+    _, backend = subdir_repo
+    cmd = ["git", "log", "--numstat", "--no-merges", "--format=%H"]
+    result = subprocess.run(cmd, cwd=backend, capture_output=True, text=True, check=True)
+
+    ctx = AdapterContext(target_path=backend, run_id="r1", repository_id="repo", timestamp=_TS)
+    facts = normalize_churn(result.stdout, ctx)
+
+    paths = {f.subject.id for f in facts}
+    # git reports "backend/app.py" but subject.id must be "app.py" (repo_path-relative)
+    assert "app.py" in paths, f"expected 'app.py', got {paths}"
+    assert not any(p.startswith("backend/") for p in paths), f"prefix not stripped: {paths}"
+
+
+def test_churn_paths_unchanged_at_repo_root(subdir_repo: tuple[Path, Path]) -> None:
+    """When target_path is the git root, prefix is empty and paths are unchanged."""
+    repo_root, _ = subdir_repo
+    cmd = ["git", "log", "--numstat", "--no-merges", "--format=%H"]
+    result = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True, check=True)
+
+    ctx = AdapterContext(target_path=repo_root, run_id="r1", repository_id="repo", timestamp=_TS)
+    facts = normalize_churn(result.stdout, ctx)
+
+    paths = {f.subject.id for f in facts}
+    assert "backend/app.py" in paths, f"expected 'backend/app.py', got {paths}"
+
+
+def test_cochange_paths_rebased_for_subdir(tmp_path: Path) -> None:
+    """git_co_change subject.id/object.id must be repo_path-relative."""
+    env = {**_GIT_ENV, "HOME": str(tmp_path), "PATH": "/usr/bin:/bin"}
+
+    def git(*args: str) -> None:
+        subprocess.run(["git", *args], cwd=tmp_path, env=env, check=True, capture_output=True)
+
+    git("init", "-b", "main")
+    git("config", "user.email", "t@t.com")
+    git("config", "user.name", "Test")
+
+    backend = tmp_path / "backend"
+    backend.mkdir()
+
+    for commit_num in range(2):
+        (backend / "a.py").write_text(f"v={commit_num}\n")
+        (backend / "b.py").write_text(f"v={commit_num}\n")
+        git("add", ".")
+        git("commit", "-m", f"commit {commit_num}")
+
+    cmd = ["git", "log", "--name-only", "--no-merges", "--format=%H"]
+    result = subprocess.run(cmd, cwd=backend, capture_output=True, text=True, check=True)
+
+    from project_intel.git_analysis.cochange import normalize_cochange
+
+    ctx = AdapterContext(target_path=backend, run_id="r1", repository_id="repo", timestamp=_TS)
+    facts = normalize_cochange(result.stdout, ctx, threshold=2)
+
+    assert len(facts) == 1
+    f = facts[0]
+    # Paths must be repo_path-relative: "a.py"/"b.py", not "backend/a.py"/"backend/b.py"
+    assert not f.subject.id.startswith("backend/"), f"subject still has prefix: {f.subject.id}"
+    assert not f.object.id.startswith("backend/"), f"object still has prefix: {f.object.id}"

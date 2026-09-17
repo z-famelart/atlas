@@ -87,11 +87,9 @@ def select_candidates(
                 top_files[path] = f.id
 
     # ── 4. Build CandidateContent (read file content once) ──────────────────
-    return [
-        CandidateContent(
-            path=path,
-            content=_read(repository_path, path),
-            source_fact_ids=[fact_id],
-        )
-        for path, fact_id in top_files.items()
-    ]
+    results = []
+    for path, fact_id in top_files.items():
+        content = _read(repository_path, path)
+        if content:
+            results.append(CandidateContent(path=path, content=content, source_fact_ids=[fact_id]))
+    return results

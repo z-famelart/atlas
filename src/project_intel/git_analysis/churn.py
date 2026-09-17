@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 
 from ..adapters.manifest import AdapterContext, AdapterManifest
 from ..facts.enums import EntityType
@@ -52,13 +53,35 @@ def _parse_numstat(output: str) -> dict[str, tuple[int, list[str]]]:
     return {path: (file_lines[path], file_hashes[path]) for path in file_lines}
 
 
+def _git_prefix(target_path: Path) -> str:
+    """Return the path prefix git uses relative to the repo root (e.g. 'backend/').
+
+    When target_path IS the repo root, returns ''. When it is a subdirectory,
+    returns the relative path with a trailing slash, e.g. 'backend/'.
+    Returns '' on any failure (non-existent path, not a git repo).
+    """
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-prefix"],
+            cwd=target_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return result.stdout.strip() if result.returncode == 0 else ""
+    except OSError:
+        return ""
+
+
 def normalize_churn(raw: str, ctx: AdapterContext) -> list[Fact]:
     """Normalize git log --numstat output into git_churn Facts."""
     analyzer = f"{_NAME}@{_VERSION}"
     file_data = _parse_numstat(raw)
+    prefix = _git_prefix(ctx.target_path)
     facts: list[Fact] = []
 
-    for path, (lines_changed, hashes) in sorted(file_data.items()):
+    for git_path, (lines_changed, hashes) in sorted(file_data.items()):
+        path = git_path[len(prefix):] if prefix and git_path.startswith(prefix) else git_path
         evidence = tuple(
             Evidence(
                 kind="commit",

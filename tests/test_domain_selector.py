@@ -17,6 +17,14 @@ def _store(tmp_path: Path) -> FactStore:
     return FactStore(tmp_path / "facts.sqlite")
 
 
+def _stub(repo: Path, rel_path: str) -> None:
+    """Write a minimal stub file at repo/rel_path so _read() returns non-empty."""
+    p = repo / rel_path
+    p.parent.mkdir(parents=True, exist_ok=True)
+    if not p.exists():
+        p.write_text("# stub\n")
+
+
 def _hotspot_fact(store: FactStore, run_id: str, path: str, score: float) -> Fact:
     now = datetime.now(UTC)
     f = Fact(
@@ -78,6 +86,7 @@ def test_top_n_is_hard_cumulative_budget(tmp_path: Path):
 
     # Step 1: 20 hotspot files (exactly fills the budget)
     for i in range(top_n):
+        _stub(tmp_path, f"src/module_{i}.py")
         _hotspot_fact(store, run_id, f"src/module_{i}.py", float(top_n - i))
 
     # Step 2: 15 additional entrypoint-only files
@@ -111,6 +120,7 @@ def test_non_test_workflow_path_not_added(tmp_path: Path):
 
     # Fill the budget with high-scoring source files so step 1 is exhausted
     for i in range(5):
+        _stub(tmp_path, f"src/module_{i}.py")
         _hotspot_fact(store, run_id, f"src/module_{i}.py", float(10 - i))
 
     # ci.yml: has 'workflow' in path but is NOT a test file — score below the top 5
@@ -129,8 +139,10 @@ def test_real_test_file_with_workflow_keyword_is_added(tmp_path: Path):
     run_id = str(uuid.uuid4())
 
     # Source file already selected via step 1
+    _stub(tmp_path, "festivals/services.py")
     _hotspot_fact(store, run_id, "festivals/services.py", 0.9)
     # Real test file: in tests/ directory, stem matches source stem — eligible via step 3
+    _stub(tmp_path, "tests/festivals/test_services.py")
     _hotspot_fact(store, run_id, "tests/festivals/test_services.py", 0.05)
 
     candidates = select_candidates(store, tmp_path, top_n=10, run_id=run_id)
@@ -171,10 +183,13 @@ def test_select_candidates_scoped_to_run_id(tmp_path: Path):
     run_b = str(uuid.uuid4())
 
     # run_a: one hotspot file
+    _stub(tmp_path, "src/run_a_module.py")
     _hotspot_fact(store, run_a, "src/run_a_module.py", 0.9)
     # run_b: a different hotspot file
+    _stub(tmp_path, "src/run_b_module.py")
     _hotspot_fact(store, run_b, "src/run_b_module.py", 0.8)
     # run_b: one centrality entrypoint
+    _stub(tmp_path, "src/run_b_entry.py")
     _centrality_fact(store, run_b, "src/run_b_entry.py", in_degree=0)
 
     candidates_a = select_candidates(store, tmp_path, top_n=20, run_id=run_a)
@@ -188,5 +203,32 @@ def test_select_candidates_scoped_to_run_id(tmp_path: Path):
     assert "src/run_b_module.py" in paths_b
     assert "src/run_b_entry.py" in paths_b
     assert "src/run_a_module.py" not in paths_b
+
+    store.close()
+
+
+# ---------------------------------------------------------------------------
+# Feature 04b — empty-content candidates are excluded (defensive drop)
+# ---------------------------------------------------------------------------
+
+
+def test_empty_content_candidate_excluded(tmp_path: Path) -> None:
+    """A candidate whose _read() returns '' is excluded from the result."""
+    store = _store(tmp_path)
+    run = "r1"
+
+    # One real file (exists on disk) and one ghost path (does not exist)
+    real_file = tmp_path / "src" / "real.py"
+    real_file.parent.mkdir(parents=True)
+    real_file.write_text("def foo(): pass\n")
+
+    _hotspot_fact(store, run, "src/real.py", 0.9)
+    _hotspot_fact(store, run, "src/ghost.py", 0.8)  # no file on disk → _read returns ""
+
+    candidates = select_candidates(store, tmp_path, top_n=20, run_id=run)
+    paths = {c.path for c in candidates}
+
+    assert "src/real.py" in paths
+    assert "src/ghost.py" not in paths  # empty content must be dropped
 
     store.close()

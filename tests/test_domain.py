@@ -132,6 +132,9 @@ def test_selector_includes_entrypoints(tmp_path: Path):
     """Files with in_degree=0 are included even if not in top hotspots."""
     store = _store(tmp_path)
     run_id = str(uuid.uuid4())
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "core.py").write_text("# stub\n")
+    (tmp_path / "src" / "main.py").write_text("# stub\n")
     _hotspot_fact(store, run_id, "src/core.py", 0.9)
     _centrality_fact(store, run_id, "src/main.py", in_degree=0)  # entrypoint, no hotspot fact
     candidates = select_candidates(store, tmp_path, top_n=5)
@@ -159,12 +162,13 @@ def test_selector_reads_file_content(tmp_path: Path):
     store.close()
 
 
-def test_selector_missing_file_returns_empty_content(tmp_path: Path):
+def test_selector_missing_file_excluded(tmp_path: Path):
+    """A candidate whose file does not exist on disk is excluded (not sent as empty content)."""
     store = _store(tmp_path)
     run_id = str(uuid.uuid4())
     _hotspot_fact(store, run_id, "src/ghost.py", 0.9)
     candidates = select_candidates(store, tmp_path, top_n=5)
-    assert candidates[0].content == ""
+    assert candidates == []
     store.close()
 
 
@@ -207,6 +211,8 @@ def test_stage_skipped_when_no_llm_provider(tmp_path: Path):
 def test_stage_skipped_when_disabled_provider(tmp_path: Path):
     ctx = _ctx(tmp_path, llm_provider=DisabledProvider())
     run_id = ctx.run_id
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "a.py").write_text("# stub\n")
     _hotspot_fact(ctx.store, run_id, "src/a.py", 0.8)
     result = STAGE.run(ctx)
     assert result.status == "skipped"
@@ -240,6 +246,8 @@ def test_stage_valid_citations_stored(tmp_path: Path):
     """Valid citations → domain facts stored with provenance=hypothesis."""
     store = _store(tmp_path)
     run_id = str(uuid.uuid4())
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "order.py").write_text("# stub\n")
     real_fact = _hotspot_fact(store, run_id, "src/order.py", 0.9)
 
     class _OkProvider:
@@ -278,6 +286,8 @@ def test_stage_invalid_citation_rejected(tmp_path: Path):
     """Fake fact_id → orchestrator rejects → stage skipped, nothing stored."""
     store = _store(tmp_path)
     run_id = str(uuid.uuid4())
+    (tmp_path / "src").mkdir(exist_ok=True)
+    (tmp_path / "src" / "a.py").write_text("# stub\n")
     _hotspot_fact(store, run_id, "src/a.py", 0.8)
 
     class _BadProvider:

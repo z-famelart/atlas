@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 from itertools import combinations
+from pathlib import Path
 
 from ..adapters.manifest import AdapterContext, AdapterManifest
 from ..facts.enums import EntityType, RelationType
@@ -46,6 +47,28 @@ def _parse_name_only(output: str) -> list[tuple[str, list[str]]]:
     return commits
 
 
+def _git_prefix(target_path: Path) -> str:
+    """Return the path prefix git uses relative to the repo root (e.g. 'backend/').
+
+    Returns '' on any failure (non-existent path, not a git repo).
+    """
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-prefix"],
+            cwd=target_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return result.stdout.strip() if result.returncode == 0 else ""
+    except OSError:
+        return ""
+
+
+def _strip_prefix(path: str, prefix: str) -> str:
+    return path[len(prefix):] if prefix and path.startswith(prefix) else path
+
+
 def normalize_cochange(
     raw: str,
     ctx: AdapterContext,
@@ -54,13 +77,14 @@ def normalize_cochange(
     """Normalize git log --name-only output into git_co_change Facts."""
     analyzer = f"{_NAME}@{_VERSION}"
     commits = _parse_name_only(raw)
+    prefix = _git_prefix(ctx.target_path)
 
     # Accumulate co-occurrence counts and evidence per pair (a < b alphabetically)
     pair_counts: dict[tuple[str, str], int] = {}
     pair_hashes: dict[tuple[str, str], list[str]] = {}
 
     for commit_hash, files in commits:
-        unique_files = sorted(set(files))
+        unique_files = sorted({_strip_prefix(f, prefix) for f in files})
         for file_a, file_b in combinations(unique_files, 2):
             key = (file_a, file_b)  # already sorted by combinations over sorted list
             pair_counts[key] = pair_counts.get(key, 0) + 1
