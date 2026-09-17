@@ -15,6 +15,14 @@ _CAP_DEPS = 50
 _CAP_HOTSPOTS = 50
 _CAP_WORKFLOWS = 20
 _CAP_PATH_DEPTH = 10
+_CAP_INSIGHTS = 50
+
+# Repository-level interpretation facts (Q143) — their subject is the repository, not a file.
+INSIGHT_KINDS = {
+    "architecture": "architecture_hypothesis",
+    "concepts": "business_concept",
+    "glossary": "glossary_term",
+}
 
 
 def _fact_to_dict(fact: Fact) -> dict[str, Any]:
@@ -25,28 +33,41 @@ def _fact_to_dict(fact: Fact) -> dict[str, Any]:
     return d
 
 
+def _run(store: FactStore, fact_type: str, run_id: str | None) -> str | None:
+    """Explicit run_id as given; otherwise the latest run holding `fact_type`.
+
+    Type-scoped so a partial run (`atlas analyze --only architecture`) doesn't hide the
+    hotspots/graph facts of the run before it.
+    """
+    return run_id if run_id is not None else store.run_id_with(fact_type, None)
+
+
 def get_component(
     store: FactStore, name_or_path: str, run_id: str | None = None
 ) -> dict[str, Any] | None:
-    """Return the first FILE entity matching name_or_path (exact or suffix match)."""
-    run_id = run_id if run_id is not None else store.latest_run_id()
-    lower = name_or_path.lower()
-    for fact in store.query_facts(run_id=run_id):
-        if fact.subject.type != EntityType.FILE:
-            continue
-        sid = fact.subject.id.lower()
-        if sid == lower or sid.endswith("/" + lower):
-            entity = store.get_entity(fact.subject)
-            result: dict[str, Any] = {"id": fact.subject.id}
-            if entity:
-                result["attributes"] = entity.attributes
-            facts = [
-                _fact_to_dict(f)
-                for f in store.query_facts(subject=fact.subject, run_id=run_id)
-            ]
-            result["facts"] = facts
-            return result
-    return None
+    """Return the first FILE entity matching name_or_path (exact or suffix match).
+
+    Without run_id, each fact type comes from the latest run holding that type.
+    """
+    subject_id = store.find_subject_id(EntityType.FILE, name_or_path, run_id)
+    if subject_id is None:
+        return None
+    ref = EntityRef(EntityType.FILE, subject_id)
+    latest: dict[str, str | None] = {}
+    facts = []
+    for f in store.query_facts(subject=ref, run_id=run_id):
+        if run_id is None:
+            if f.type not in latest:
+                latest[f.type] = store.latest_run_id(type=f.type)
+            if f.run_id != latest[f.type]:
+                continue
+        facts.append(_fact_to_dict(f))
+    result: dict[str, Any] = {"id": subject_id}
+    entity = store.get_entity(ref)
+    if entity:
+        result["attributes"] = entity.attributes
+    result["facts"] = facts
+    return result
 
 
 def get_dependencies(
@@ -54,7 +75,7 @@ def get_dependencies(
 ) -> list[dict[str, Any]]:
     """Outbound edges (imports/calls) from component. Hard cap: 50."""
     limit = min(limit, _CAP_DEPS)
-    run_id = run_id if run_id is not None else store.latest_run_id()
+    run_id = _run(store, "imports", run_id)
     ref = EntityRef(type=EntityType.FILE, id=component)
     results = []
     for fact in store.query_facts(subject=ref, run_id=run_id):
@@ -70,7 +91,7 @@ def get_dependents(
 ) -> list[dict[str, Any]]:
     """Inbound edges (imports/calls) targeting component. Hard cap: 50."""
     limit = min(limit, _CAP_DEPS)
-    run_id = run_id if run_id is not None else store.latest_run_id()
+    run_id = _run(store, "imports", run_id)
     results = []
     for fact in store.query_facts(run_id=run_id):
         if fact.type in ("imports", "calls") and fact.object and fact.object.id == component:
@@ -85,7 +106,7 @@ def find_workflow(
 ) -> list[dict[str, Any]]:
     """Substring search over business_workflow facts. Hard cap: 20."""
     limit = min(limit, _CAP_WORKFLOWS)
-    run_id = run_id if run_id is not None else store.latest_run_id()
+    run_id = _run(store, "business_workflow", run_id)
     lower = query.lower()
     results = []
     for fact in store.query_facts(type="business_workflow", run_id=run_id):
@@ -109,7 +130,7 @@ def get_hotspots(
 ) -> list[dict[str, Any]]:
     """hotspot_score facts sorted by combined descending. Hard cap: 50."""
     top_n = min(top_n, _CAP_HOTSPOTS)
-    run_id = run_id if run_id is not None else store.latest_run_id()
+    run_id = _run(store, "hotspot_score", run_id)
     facts = list(store.query_facts(type="hotspot_score", run_id=run_id))
     if component:
         facts = [f for f in facts if component in f.subject.id]
@@ -131,7 +152,7 @@ def get_path(
     hot loops.
     """
     max_depth = min(max_depth, _CAP_PATH_DEPTH)
-    run_id = run_id if run_id is not None else store.latest_run_id()
+    run_id = _run(store, "imports", run_id)
 
     # Build adjacency from facts
     adj: dict[str, list[str]] = {}
@@ -165,8 +186,9 @@ def where_to_start(
     run_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Return onboarding_path facts if present, else top hotspots + high-centrality files."""
-    run_id = run_id if run_id is not None else store.latest_run_id()
-    onboarding = list(store.query_facts(type="onboarding_path", run_id=run_id))
+    onboarding = list(
+        store.query_facts(type="onboarding_path", run_id=_run(store, "onboarding_path", run_id))
+    )
     if component:
         onboarding = [f for f in onboarding if component in f.subject.id]
 
@@ -176,7 +198,9 @@ def where_to_start(
     # Fallback: top 5 hotspots + top 5 high in-degree centrality files
     hotspots = get_hotspots(store, top_n=5, component=component, run_id=run_id)
 
-    centrality = list(store.query_facts(type="centrality", run_id=run_id))
+    centrality = list(
+        store.query_facts(type="centrality", run_id=_run(store, "centrality", run_id))
+    )
     if component:
         centrality = [f for f in centrality if component in f.subject.id]
     centrality.sort(
@@ -186,3 +210,16 @@ def where_to_start(
     centrality_dicts = [_fact_to_dict(f) for f in centrality[:5]]
 
     return hotspots + centrality_dicts
+
+
+def get_insights(
+    store: FactStore, kind: str, limit: int = 10, run_id: str | None = None
+) -> list[dict[str, Any]]:
+    """Repository-level interpretation facts of `kind` (see INSIGHT_KINDS), highest
+    confidence first. Hard cap: 50. Raises ValueError for an unknown kind."""
+    if kind not in INSIGHT_KINDS:
+        raise ValueError(f"unknown kind {kind!r}; expected one of {sorted(INSIGHT_KINDS)}")
+    fact_type = INSIGHT_KINDS[kind]
+    facts = list(store.query_facts(type=fact_type, run_id=_run(store, fact_type, run_id)))
+    facts.sort(key=lambda f: f.confidence, reverse=True)
+    return [_fact_to_dict(f) for f in facts[: min(limit, _CAP_INSIGHTS)]]

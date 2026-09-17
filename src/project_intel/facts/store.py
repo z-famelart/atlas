@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import cattrs
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, String, create_engine, select
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, String, create_engine, func, or_, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
 from .enums import EntityType
@@ -261,6 +261,23 @@ class FactStore:
                 if session.scalars(stmt).first() is not None:
                     return preferred
         return self.latest_run_id(type=type)
+
+    def find_subject_id(
+        self, subject_type: EntityType, name_or_path: str, run_id: str | None = None
+    ) -> str | None:
+        """First subject id (of `subject_type`, optionally within `run_id`) equal to or ending
+        in `/name_or_path`, case-insensitive. Exact matches win; ties break alphabetically."""
+        lower = name_or_path.lower()
+        sid = func.lower(_FactRow.subject_id)
+        stmt = select(_FactRow.subject_id).where(
+            _FactRow.subject_type == subject_type.value,
+            or_(sid == lower, func.substr(sid, -(len(lower) + 1)) == "/" + lower),
+        )
+        if run_id is not None:
+            stmt = stmt.where(_FactRow.run_id == run_id)
+        stmt = stmt.distinct().order_by((sid != lower), _FactRow.subject_id).limit(1)
+        with self._Session() as session:
+            return session.scalars(stmt).first()
 
     def fact_exists(self, fact_id: str) -> bool:
         with self._Session() as session:

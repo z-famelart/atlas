@@ -279,7 +279,7 @@ def test_no_mutation(store: FactStore, tmp_path: Path) -> None:
 
 
 def test_create_server() -> None:
-    """Global server instantiates with no arguments and lists all 7 tools."""
+    """Global server instantiates with no arguments and lists all 8 tools."""
     import asyncio
 
     server = create_server()
@@ -297,6 +297,7 @@ def test_create_server() -> None:
         "get_hotspots",
         "get_path",
         "where_to_start",
+        "get_insights",
     }
     assert expected == set(tool_names)
 

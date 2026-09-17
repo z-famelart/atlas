@@ -42,7 +42,7 @@ def create_server() -> MCPServer:
     @mcp.tool(
         description=(
             "Look up facts about a component (file). Returns the first match. "
-            "Facts are for the most recent analyze run, or a specific run_id if given."
+            "Each fact type comes from the most recent run that produced it, or a specific run_id if given."
         )
     )
     def get_component(repo_path: str, name_or_path: str, run_id: str | None = None) -> str:
@@ -60,7 +60,7 @@ def create_server() -> MCPServer:
     @mcp.tool(
         description=(
             "Outbound imports/calls from a component. limit capped at 50. "
-            "Scoped to the most recent analyze run, or a specific run_id if given."
+            "Scoped to the most recent run that produced these facts, or a specific run_id if given."
         )
     )
     def get_dependencies(
@@ -78,7 +78,7 @@ def create_server() -> MCPServer:
     @mcp.tool(
         description=(
             "Inbound imports/calls targeting a component. limit capped at 50. "
-            "Scoped to the most recent analyze run, or a specific run_id if given."
+            "Scoped to the most recent run that produced these facts, or a specific run_id if given."
         )
     )
     def get_dependents(
@@ -96,7 +96,7 @@ def create_server() -> MCPServer:
     @mcp.tool(
         description=(
             "Substring search over business_workflow facts. limit capped at 20. "
-            "Scoped to the most recent analyze run, or a specific run_id if given."
+            "Scoped to the most recent run that produced these facts, or a specific run_id if given."
         )
     )
     def find_workflow(
@@ -114,7 +114,7 @@ def create_server() -> MCPServer:
     @mcp.tool(
         description=(
             "hotspot_score facts sorted by combined descending. top_n capped at 50. "
-            "Scoped to the most recent analyze run, or a specific run_id if given."
+            "Scoped to the most recent run that produced these facts, or a specific run_id if given."
         )
     )
     def get_hotspots(
@@ -133,8 +133,8 @@ def create_server() -> MCPServer:
         description=(
             "BFS shortest path between two components in the imports/calls graph. "
             "max_depth capped at 10. Returns {found: false, reason: 'no path within bound'} "
-            "when no path exists within the depth limit. Scoped to the most recent analyze "
-            "run, or a specific run_id if given."
+            "when no path exists within the depth limit. Scoped to the most recent run that "
+            "produced these facts, or a specific run_id if given."
         )
     )
     def get_path(
@@ -156,8 +156,8 @@ def create_server() -> MCPServer:
     @mcp.tool(
         description=(
             "Onboarding_path facts if present, else top hotspots + high-centrality files. "
-            "Scope to a specific component with the optional component argument. Scoped to "
-            "the most recent analyze run, or a specific run_id if given."
+            "Scope to a specific component with the optional component argument. Each fact type "
+            "comes from the most recent run that produced it, or a specific run_id if given."
         )
     )
     def where_to_start(
@@ -168,6 +168,29 @@ def create_server() -> MCPServer:
             return _missing(repo_path)
         try:
             result = queries.where_to_start(store, component, run_id)
+        finally:
+            store.close()
+        return json.dumps(result, default=str)
+
+    @mcp.tool(
+        description=(
+            "Repository-level interpretation facts (LLM hypotheses, provenance + confidence "
+            "included). kind: 'architecture' (architecture_hypothesis), 'concepts' "
+            "(business_concept) or 'glossary' (glossary_term). Highest confidence first; "
+            "limit capped at 50. Defaults to the latest run holding that kind, or a specific "
+            "run_id if given. An empty list means no such facts were produced."
+        )
+    )
+    def get_insights(
+        repo_path: str, kind: str, limit: int = 10, run_id: str | None = None
+    ) -> str:
+        store = _open_store(repo_path)
+        if store is None:
+            return _missing(repo_path)
+        try:
+            result = queries.get_insights(store, kind, limit, run_id)
+        except ValueError as e:
+            return json.dumps({"error": str(e)})
         finally:
             store.close()
         return json.dumps(result, default=str)
