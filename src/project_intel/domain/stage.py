@@ -78,7 +78,7 @@ class _DomainStage:
 
         try:
             candidates: list[CandidateContent] = select_candidates(
-                ctx.store, ctx.repository_path
+                ctx.store, ctx.repository_path, run_id=ctx.run_id
             )
             if not candidates:
                 return StageRunResult(

@@ -12,6 +12,11 @@ You are analyzing a software repository to identify its business domain.
 Based on the provided file contents (selected as the most structurally significant files),
 identify the business concepts, workflows, and glossary terms present in this codebase.
 
+Coverage requirement: Examine every file provided below, not just the first one or two that \
+stand out — a repository with several distinct modules/apps should produce concepts, workflows, \
+and glossary terms spanning more than one of them whenever the evidence supports it. Do not stop \
+once you have found one concept if other candidate files describe unrelated domain logic.
+
 Rules:
 - fact_ids must only contain ids from the provided candidate facts — do not invent ids.
 - Each concept, workflow, and glossary entry must cite at least one fact_id.
