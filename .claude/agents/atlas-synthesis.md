@@ -112,7 +112,7 @@ Content to include in "Atlas findings":
 - Hotspots table (file, complexity, churn, score)
 - Architecture pattern + confidence (if returned)
 - Domain concepts identified (if returned)
-- Recommended onboarding path from `where_to_start()`
+- Recommended onboarding path from `where_to_start()` — when relaying `entry_points` and `avoid_initially` items, always include each item's `rationale` field alongside the component/test name; never relay a bare name-only list
 - Any `not_analyzed` gaps explicitly noted
 
 ### Section 2 — "My read"
@@ -126,7 +126,9 @@ The agent must:
 - Explain which hotspot/architecture/domain items it's reasoning from
 - Flag anything where the architecture hypothesis and churn data agree or contradict each other
 - Give a concrete recommendation for where a newcomer should start and why
-- If there are `not_analyzed` gaps, say what it would want to know but cannot
+- If there are `not_analyzed` gaps, handle them by case:
+  - **Genuinely unknowable this session** (no analyzer exists for the category at all — Runtime, Infrastructure, CI/CD, Data, Observability, Tests): say so, and say what you would want to know if that signal were available.
+  - **Architecture came up "uncatalogued" with no synthesized pattern** (Feature 08's known model-reliability limit): do NOT describe the gap and move on. Open and read the specific files MCP flagged as relevant — from `get_hotspots`, `get_component`, or the hypothesis's own `fact_ids` — and write your own grounded architectural read of those files in this section. The failure mode to avoid explicitly: pointing the reader to the flagged files instead of reading them yourself is not acceptable when you have filesystem access to `repo_path`. Domain understanding gaps are not in this bucket after Feature 09b (that fix addresses them at the source); if a domain gap still occurs despite 09b, apply the same read-the-files principle as a last resort.
 
 Do not restate the relayed findings — the reader already saw them. Add judgment.
 
