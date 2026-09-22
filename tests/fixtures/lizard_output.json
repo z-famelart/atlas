@@ -29,5 +29,13 @@
     "functions": [
       {"name": "qux_fn", "cyclomatic_complexity": 2, "nloc": 15}
     ]
+  },
+  {
+    "filename": "src/widget.vue",
+    "nloc": 10,
+    "average_cyclomatic_complexity": 2.0,
+    "functions": [
+      {"name": "hello", "cyclomatic_complexity": 2, "nloc": 10}
+    ]
   }
 ]

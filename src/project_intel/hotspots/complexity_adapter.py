@@ -6,7 +6,7 @@ import json
 import uuid
 from pathlib import Path
 
-from ..adapters.language_scope import MVP_EXTENSIONS
+from ..adapters.language_scope import LIZARD_EXTENSIONS as _MVP_EXTENSIONS
 from ..adapters.manifest import AdapterContext, AdapterManifest
 from ..facts import SCHEMA_VERSION, EntityRef, EntityType, Evidence, Fact
 from ..facts.refs import FileRef
@@ -14,11 +14,6 @@ from ..facts.refs import FileRef
 _NAME = "lizard"
 _VERSION = "1.0"
 _ANALYZER = f"{_NAME}@{_VERSION}"
-
-
-# lizard also handles C/C++ well beyond the Q193 MVP language list — kept as a
-# pre-existing extra on top of the shared scope, not part of Q193 itself.
-_MVP_EXTENSIONS: frozenset[str] = MVP_EXTENSIONS | {".c", ".cpp", ".h"}
 
 _SKIP_DIRS: frozenset[str] = frozenset(
     [".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build",
@@ -103,8 +98,9 @@ def lizard_manifest() -> AdapterManifest:
         command=_lizard_command,
         normalize=_normalize,
         supported_ecosystems=[
-            "python", "typescript", "javascript", "go",
-            "java", "kotlin", "ruby", "rust", "c", "cpp",
+            "python", "typescript", "javascript", "go", "java", "kotlin",
+            "ruby", "rust", "c", "cpp", "php", "vue", "swift", "scala",
+            "csharp", "objectivec", "lua", "r", "sql",
         ],
         install_hint="uv add lizard  # or: pip install lizard",
     )

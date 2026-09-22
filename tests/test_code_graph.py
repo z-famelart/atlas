@@ -323,3 +323,11 @@ def test_coverage_gap_php_now_in_scope() -> None:
     result = compute_coverage_gap(store, REPO, RUN)
     assert result[0].value["out_of_scope_languages"] == {}
     assert result[0].value["in_scope_loc"] == 50
+
+
+def test_coverage_gap_vue_in_scope() -> None:
+    """Vue is part of the scope too (lizard's VueReader, graphify's extract_vue)."""
+    store = _store_with(_language_fact("a.vue", "Vue", 40))
+    result = compute_coverage_gap(store, REPO, RUN)
+    assert result[0].value["out_of_scope_languages"] == {}
+    assert result[0].value["in_scope_loc"] == 40
