@@ -21,5 +21,13 @@
     "nloc": 0,
     "average_cyclomatic_complexity": 0.0,
     "functions": []
+  },
+  {
+    "filename": "src/qux.php",
+    "nloc": 15,
+    "average_cyclomatic_complexity": 2.0,
+    "functions": [
+      {"name": "qux_fn", "cyclomatic_complexity": 2, "nloc": 15}
+    ]
   }
 ]

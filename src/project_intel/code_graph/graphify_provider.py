@@ -7,6 +7,7 @@ import subprocess
 import uuid
 from pathlib import Path
 
+from ..adapters.language_scope import MVP_EXTENSIONS as _MVP_EXTENSIONS
 from ..adapters.manifest import AdapterContext, AdapterManifest
 from ..facts import (
     SCHEMA_VERSION,
@@ -17,10 +18,6 @@ from ..facts import (
     FileRef,
     RelationType,
     SymbolRef,
-)
-
-_MVP_EXTENSIONS: frozenset[str] = frozenset(
-    [".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".java", ".kt", ".rb", ".rs"]
 )
 
 # graphify link relations → our RelationType; others are skipped
@@ -64,7 +61,7 @@ class GraphifyProvider:
             install_hint="npm install -g graphify  # see graphify docs for install options",
             supported_ecosystems=[
                 "python", "typescript", "javascript", "go",
-                "java", "kotlin", "ruby", "rust",
+                "java", "kotlin", "ruby", "rust", "php",
             ],
         )
 

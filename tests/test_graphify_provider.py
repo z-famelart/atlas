@@ -149,6 +149,12 @@ def test_rust_file_included(facts):
     assert "src_baz_rs_baz_fn" in ids
 
 
+def test_php_file_included(facts):
+    """src/qux.php is in the MVP list (Q193 extended for PHP) — must be emitted."""
+    ids = {f.subject.id for f in facts if f.type == "symbol_defined"}
+    assert "src_qux_php_qux_fn" in ids
+
+
 # ---------------------------------------------------------------------------
 # manifest() shape
 # ---------------------------------------------------------------------------
