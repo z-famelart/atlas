@@ -1,15 +1,20 @@
 ---
 name: atlas-synthesis
-description: Query an Atlas MCP server and write a tailored HTML synthesis document. Two-layer output — relayed Atlas findings with provenance badges, then the agent's own interpretation. Runs `atlas analyze` itself when no facts store exists yet (self-resolving an Ollama model if none was specified), or when an existing store never had a real LLM attempt; otherwise skips re-analysis.
+description: Query an Atlas MCP server and write a tailored HTML synthesis document. Two-layer output — relayed Atlas findings with provenance badges, then the agent's own interpretation. Runs `atlas analyze` itself when no facts store exists yet (self-resolving an Ollama model if none was specified), or when an existing store never had a real LLM attempt; otherwise skips re-analysis. Given a `config_path` + `system_name` instead of a single `repo_path`, produces one tabbed document — an Overview tab plus one findings tab per member repository (Feature 13b/12e).
 ---
 
 # Atlas synthesis agent
 
 **Important**: the HTML report produced by Feature 11/11b (written by every `atlas analyze` run as `atlas-report-<run_id>.html`) is Atlas's standalone full deliverable — self-contained, offline, covering every fact in the store. This agent is a *complementary, tailored alternative*: a shorter, curated synthesis written by the agent for a specific question or audience, not a replacement for the full report.
 
-## Prerequisites / startup sequence
+## Invocation modes
 
-Given a `repo_path`, perform these steps before querying MCP:
+- **Single-repository mode** — invoked with a `repo_path`. Everything below through "Output destination" describes this mode; it is unchanged from before Feature 13b/12e existed.
+- **Multi-repository / System mode** — invoked with a `config_path` (the Project TOML file, e.g. `.atlas.toml`) and a `system_name` instead of a `repo_path`. See "Multi-repository / System mode" near the end: it bootstraps System-level facts (Feature 13b), then runs the entire single-repository procedure below once per member repository (each member's `repo_path` comes from `get_system`), and assembles the results into one tabbed HTML document instead of one flat file. Use this mode whenever the target is a monorepo with several sub-projects, or several separate repositories, declared under a shared `system =` in a Project config — not a single `repo_path` guessed to "contain" them.
+
+## Prerequisites / startup sequence (single repository)
+
+Given a `repo_path`, perform these steps before querying MCP. In System mode, this entire section runs once per member repository — see "Multi-repository / System mode" below.
 
 1. **Check for an existing facts store.** The fixed output location is `<repo_path>/.atlas-cache/facts.sqlite` — this is the only path `atlas analyze` ever writes to (no `--output` flag exists); it is always derivable from `repo_path` alone.
 
@@ -40,7 +45,7 @@ Given a `repo_path`, perform these steps before querying MCP:
 
 6. Proceed with the MCP query sequence below.
 
-## MCP query sequence
+## MCP query sequence (single repository)
 
 Call these primitives in order. Each call's response is relayed verbatim into the "Atlas findings" section (with provenance intact); the agent's interpretation comes after. Every tool also requires `repo_path=<repo_path>` (omitted below for brevity).
 
@@ -53,6 +58,22 @@ Call these primitives in order. Each call's response is relayed verbatim into th
 7. If two interesting components appear (e.g. one hot, one a dependency): `get_path(repo_path=<repo_path>, component_a=<name>, component_b=<name>)`.
 
 If any call returns `not_analyzed` or an empty result, record that gap explicitly in the findings — never paper over it or invent a substitute.
+
+## Multi-repository / System mode
+
+Invoked with a `config_path` and a `system_name` instead of a `repo_path`. `project_root` is always `config_path`'s parent directory (matches Feature 13b's own convention — do not guess a different root).
+
+1. **Bootstrap the system store if it doesn't exist yet.** Expected path: `<project_root>/.atlas-cache/system-<system_name>.sqlite`. If missing, run `atlas analyze --config <config_path>` once (this analyzes every `[[repositories]]` member *and* writes the system store in the same invocation — see Feature 13b) and wait for it to finish. If it already exists, do not re-run it just for this — membership facts are declarative (Q4), they don't go stale the way LLM results do; per-member LLM staleness is handled per-repository in step 3 below, not here.
+
+2. **Call `get_system(project_root=<project_root>, system_name=<system_name>)`.** This returns the `System` entity, every member `Repository` entity, and the `belongs_to` facts. If it returns the not-analyzed/missing-store shape even after step 1, stop and say so — do not invent member repositories. Each returned repository's `id` **is** its `repo_path` — read directly, never reconstructed or guessed.
+
+3. **Run the entire single-repository procedure above, once per member.** For each `repositories[i].id` from step 2, execute "Prerequisites / startup sequence (single repository)" and "MCP query sequence (single repository)" verbatim, treating that `id` as `<repo_path>`. This is what individually resolves each member's own LLM flags, decides whether *that* member needs a fresh `atlas analyze <repo_path>` run (14b/14c's staleness check, per member — a system with 4 repos may need 0, 1, or 4 of them re-analyzed), and produces that member's relayed findings + "My read". Keep each member's full two-section result (see "HTML output shape" below) — it becomes that member's tab.
+
+4. **Write the Overview tab.** Unlike a member tab, this one has almost no Atlas facts to relay — Q4 deliberately does not infer *how* repositories relate, only *that* they do. Its relayed layer is exactly the `belongs_to` facts from step 2 (provenance `observed`, confidence 1.0 — declared membership, cite them plainly, e.g. "Atlas: `svc-frontend`, `svc-backend`, `svc-infra` are declared members of system `myapp`"). Everything past that is the agent's own reading, same principle as the single-repository "My read" gap-handling rule (open and read the files yourself — do not just point at them):
+   - Read root-level files under `project_root` that indicate how the members relate: `docker-compose.yml`/`compose.yaml` (service `build`/`depends_on`/`image` entries), workspace manifests (`package.json` `workspaces`, `pnpm-workspace.yaml`, `lerna.json`, a root `Cargo.toml` `[workspace]`), root CI config, and the config file itself (`config_path`) for any structure beyond bare `system =`.
+   - State a concrete read of the topology (e.g. "`svc-frontend` and `svc-admin` both consume `svc-api`'s REST endpoints per `docker-compose.yml`'s `depends_on`; `svc-infra` has no service block and looks standalone (Terraform only, per its directory contents)") — grounded in what was actually read, never invented.
+   - Carry no provenance badge on this interpretive part, same rule as every other "My read" section — it is the agent's voice, not an Atlas fact.
+   - If nothing at `project_root` gives any topology signal, say so plainly rather than filling the gap with plausible-sounding guesses.
 
 ## Provenance rules (non-negotiable)
 
@@ -133,6 +154,42 @@ The agent must:
 
 Do not restate the relayed findings — the reader already saw them. Add judgment.
 
+### Multi-repository / System mode: tabbed shell
+
+Still one self-contained HTML file — no server, no build step, no separate file per tab. A top nav bar switches between an "Overview" tab and one tab per member (labeled with each member's `name` attribute from `get_system`, falling back to its `id` if absent). Each member tab's *content* is exactly that member's Section 1 ("Atlas findings") + Section 2 ("My read") from above, unchanged — the tab is a wrapper, not a reformat. The Overview tab uses the same `.prov-badge`/evidence-panel conventions for its relayed `belongs_to` facts, and the same "no badge" rule for its interpretive read (see "Multi-repository / System mode" above).
+
+```css
+.tab-bar { display: flex; gap: 4px; border-bottom: 2px solid #ccc; margin-bottom: 1rem; flex-wrap: wrap; }
+.tab-bar button {
+  padding: 8px 16px; border: none; background: #eee; cursor: pointer;
+  font-size: 0.9rem; border-radius: 4px 4px 0 0;
+}
+.tab-bar button.active { background: #1565c0; color: #fff; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+```
+
+```js
+function showTab(id) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-bar button').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  document.querySelector('.tab-bar button[data-tab="' + id + '"]').classList.add('active');
+}
+```
+
+```html
+<div class="tab-bar">
+  <button data-tab="overview" class="active" onclick="showTab('overview')">Overview</button>
+  <button data-tab="svc-frontend" onclick="showTab('svc-frontend')">svc-frontend</button>
+  <!-- one button per member -->
+</div>
+<div id="tab-overview" class="tab-panel active"> ... Overview tab content ... </div>
+<div id="tab-svc-frontend" class="tab-panel"> ... that member's Section 1 + Section 2 ... </div>
+```
+
+A single evidence panel (the `showEvidence`/`#evidence-panel` element from above) is shared across all tabs — no need to duplicate it per tab.
+
 ## Output destination
 
-Write the HTML file wherever the user specifies, or default to `atlas-synthesis.html` in the current working directory. Atlas itself does not store, version, or serve this file — it is the agent's own output, not a new Atlas artifact.
+Write the HTML file wherever the user specifies. Single-repository mode defaults to `atlas-synthesis.html`; System mode defaults to `atlas-synthesis-<system_name>.html`, both in the current working directory. Atlas itself does not store, version, or serve this file — it is the agent's own output, not a new Atlas artifact.
