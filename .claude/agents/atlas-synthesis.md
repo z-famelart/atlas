@@ -5,7 +5,7 @@ description: Query an Atlas MCP server and write a tailored HTML synthesis docum
 
 # Atlas synthesis agent
 
-**Important**: the HTML report produced by Feature 11/11b (`atlas report`) is Atlas's standalone full deliverable — self-contained, offline, covering every fact in the store. This agent is a *complementary, tailored alternative*: a shorter, curated synthesis written by the agent for a specific question or audience, not a replacement for the full report.
+**Important**: the HTML report produced by Feature 11/11b (written by every `atlas analyze` run as `atlas-report-<run_id>.html`) is Atlas's standalone full deliverable — self-contained, offline, covering every fact in the store. This agent is a *complementary, tailored alternative*: a shorter, curated synthesis written by the agent for a specific question or audience, not a replacement for the full report.
 
 ## Prerequisites / startup sequence
 
@@ -36,20 +36,21 @@ Given a `repo_path`, perform these steps before querying MCP:
 
    A failed/partial `analyze` run (some stages `not_analyzed`) is not a reason to stop — proceed with whatever facts exist, same as for individual `not_analyzed` MCP results below.
 
-5. **Connect to the global MCP server.** The Atlas MCP server is registered globally in `~/.claude/mcp.json` (no path argument — `atlas mcp-serve` starts without a database). Pass `repo_path=<repo_path>` on every tool call; the server derives `<repo_path>/.atlas-cache/facts.sqlite` itself. No per-repository `atlas mcp-serve` invocation needed.
+5. **Connect to the global MCP server.** The Atlas MCP server is registered globally at user scope (`claude mcp add --scope user atlas -- atlas mcp-serve`, no path argument — `atlas mcp-serve` starts without a database). Pass `repo_path=<repo_path>` on every tool call; the server derives `<repo_path>/.atlas-cache/facts.sqlite` itself. No per-repository `atlas mcp-serve` invocation needed.
 
 6. Proceed with the MCP query sequence below.
 
 ## MCP query sequence
 
-Call these primitives in order. Each call's response is relayed verbatim into the "Atlas findings" section (with provenance intact); the agent's interpretation comes after.
+Call these primitives in order. Each call's response is relayed verbatim into the "Atlas findings" section (with provenance intact); the agent's interpretation comes after. Every tool also requires `repo_path=<repo_path>` (omitted below for brevity).
 
 1. `where_to_start()` — overall orientation, recommended entry points.
 2. `get_hotspots(top_n=10)` — top files by churn+complexity score.
-3. For each entry in the hotspot result: `get_component(name=<file>)` — facts about that component.
-4. `find_workflow(query="<domain_keyword>")` — repeat with 2–3 domain keywords inferred from step 1 (e.g. "checkout", "payment", "order").
-5. `get_dependencies(component=<name>)` for the top 3–5 components from steps 2–3.
-6. If two interesting components appear (e.g. one hot, one a dependency): `get_path(a=<name>, b=<name>)`.
+3. `get_insights(kind="architecture")` then `get_insights(kind="concepts")` (add `kind="glossary"` when domain vocabulary matters) — repository-level hypotheses with their confidence and `fact_ids`.
+4. For each entry in the hotspot result: `get_component(repo_path=<repo_path>, name_or_path=<file>)` — facts about that component.
+5. `find_workflow(query="<domain_keyword>")` — repeat with 2–3 domain keywords inferred from steps 1 and 3 (e.g. "checkout", "payment", "order").
+6. `get_dependencies(component=<name>)` for the top 3–5 components from steps 2 and 4.
+7. If two interesting components appear (e.g. one hot, one a dependency): `get_path(repo_path=<repo_path>, component_a=<name>, component_b=<name>)`.
 
 If any call returns `not_analyzed` or an empty result, record that gap explicitly in the findings — never paper over it or invent a substitute.
 
@@ -110,8 +111,8 @@ function showEvidence(el) {
 Content to include in "Atlas findings":
 - If Ollama was not reachable (per the startup sequence's step 2), a prominent notice **at the top of this section**, before the hotspots table — e.g. "Ollama was not reachable when this analysis ran; architecture/domain/onboarding sections were skipped. Install/start Ollama and re-run to get LLM-backed findings." Do not bury this as a per-section gap note.
 - Hotspots table (file, complexity, churn, score)
-- Architecture pattern + confidence (if returned)
-- Domain concepts identified (if returned)
+- Architecture pattern + confidence, from `get_insights(kind="architecture")` (empty list → state the gap)
+- Domain concepts identified, from `get_insights(kind="concepts")` (empty list → state the gap)
 - Recommended onboarding path from `where_to_start()` — when relaying `entry_points` and `avoid_initially` items, always include each item's `rationale` field alongside the component/test name; never relay a bare name-only list
 - Any `not_analyzed` gaps explicitly noted
 

@@ -61,7 +61,7 @@ class GraphifyProvider:
             category="code_graph",
             command=_graphify_command,
             normalize=self._normalize,
-            install_hint="npm install -g graphify  # see graphify docs for install options",
+            install_hint="uv tool install graphifyy  # PyPI package name has two y's",
             supported_ecosystems=[
                 "python", "typescript", "javascript", "go",
                 "java", "kotlin", "ruby", "rust",

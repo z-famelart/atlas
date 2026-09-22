@@ -7,6 +7,8 @@ Statut de chaque réponse :
 - **Proposition** — une réponse par défaut raisonnable est donnée mais reste ouverte à discussion.
 - **Ouvert** — la question nécessite un arbitrage produit/business avant d'être tranchée (marqué **⚠️ impact architectural**).
 
+**Depuis le 2026-09-17, toutes les questions sont Décidé** : les dernières Propositions et points Ouverts ont été tranchés en s'appuyant sur ce que l'implémentation a réellement montré (entrées marquées « résolu 2026-09-17 »). Les deux statuts ci-dessus ne servent plus qu'à lire l'historique. « Décidé » ne veut pas dire « implémenté » : chaque décision non encore implémentée le dit explicitement, et la liste complète est dans la [synthèse finale](#synthèse--décisions-non-encore-implémentées).
+
 Ce document est lui-même vivant : chaque réponse doit être révisée quand l'implémentation contredit une hypothèse.
 
 ---
@@ -23,7 +25,7 @@ Décidé. `Repository` = une racine de code versionné (Git). `Project` = la con
 Décidé — oui, dès le MVP en configuration explicite (cf. Q195) : c'est une conséquence directe du principe "Repository != System".
 
 **4. Comment déclare-t-on que plusieurs repositories appartiennent au même système ?**
-Proposition. Déclaration explicite dans la configuration du `Project` (liste de repositories + tag `system: <name>` optionnel par repository). Pas de détection automatique au MVP ; une heuristique (noms proches, dépendances croisées via manifests, mentions croisées en documentation) peut être ajoutée en P2 comme *hypothèse*, jamais comme fait.
+Décidé (résolu 2026-09-17). Déclaration explicite uniquement : chaque entrée `[[repositories]]` de `.atlas.toml` pourra porter un champ optionnel `system = "<nom>"` (many-to-many possible, Q5). Pas de détection automatique : l'appartenance à un système est une connaissance organisationnelle que le code seul ne prouve pas — la deviner contredirait « Never pretend to know » ; une heuristique éventuelle (P2) ne produirait que des `hypothesis`. **Statut : non implémenté** : chaque repository listé est aujourd'hui analysé séparément (store et rapport propres) et `system` n'est pas lu (cf. `docs/improvement-ideas.md` §5).
 
 **5. Un repository peut-il appartenir à plusieurs systèmes ?**
 Décidé — oui (ex. un monorepo partagé, une librairie interne). La relation `Repository -> System` est many-to-many dans le modèle.
@@ -38,7 +40,7 @@ Décidé. Un champ n'est jamais laissé implicitement vide : soit il porte une v
 Décidé. Les cinq granularités doivent être adressables dans le modèle de Facts dès le MVP, même si tous les analyzers ne produisent pas toutes les granularités immédiatement. Le graphe de code (Q34+) est l'endroit où `file` et `symbol` doivent être navigables individuellement.
 
 **9. L'utilisateur peut-il limiter explicitement le scope ?**
-Décidé — oui, obligatoire au MVP : include/exclude par path glob, par langage, et par repository dans la configuration. C'est un garde-fou direct contre le non-goal "agent qui explore aveuglément toute la codebase".
+Décidé — oui, obligatoire au MVP : include/exclude par path glob, par langage, et par repository dans la configuration. C'est un garde-fou direct contre le non-goal "agent qui explore aveuglément toute la codebase". **Statut (2026-09-17) : partiel** — include/exclude par glob et `max_depth` (`[scope]`), appliqués par le stage `discovery` seulement ; `git`/`code_graph`/`hotspots` voient tout `PATH` ; pas de filtre par langage. Contournement documenté : passer un sous-dossier en `PATH`.
 
 **10. L'outil doit-il pouvoir fonctionner complètement offline ?**
 Décidé — oui pour toute la partie déterministe (discovery, code graph, hotspots, Git). Le mode offline désactive uniquement les étapes LLM et connectors externes ; le rapport HTML doit rester généré et utile sans ces étapes (cf. Q198, Q137).
@@ -63,7 +65,7 @@ Décidé. Même mécanisme que Q12/Q13 : détection par fichier de lock/manifest
 Décidé. Présence d'un répertoire `.git` (ou `.git` file pour un submodule/worktree) à la racine ou dans les sous-répertoires scannés, via l'outil Git lui-même.
 
 **16. Comment détecte-t-on qu'une partie du système est probablement ailleurs ?**
-Proposition. Signaux déterministes : références à des noms d'hôtes/services non résolus dans le repo, variables d'environnement pointant vers des systèmes non présents, mentions dans la documentation de repositories/systèmes externes, imports vers des packages internes non présents dans le scope. Chaque signal produit une entrée `ExternalSource` hypothétique (cf. Q6), jamais une affirmation.
+Décidé (résolu 2026-09-17). P2, hors MVP. Les signaux listés (hôtes/services non résolus, variables d'environnement, mentions en documentation, imports de packages internes absents du scope) produiront des `ExternalSource` de provenance `hypothesis`, jamais des faits. Différé parce que chaque signal est bruité et demande son propre analyzer, alors que le cas explicite (Q6/Q119) suffit au MVP ; le type d'entité `ExternalSource` existe déjà dans le modèle (`facts/enums.py`), aucune refonte ne sera nécessaire.
 
 **17. Comment détecte-t-on les fichiers d'IaC ?**
 Décidé. Détection déclarative par pattern de fichier/extension par outil IaC (`*.tf`, `Chart.yaml`, `*.yaml` avec `kind:` Kubernetes connu, `serverless.yml`, `cdk.json`, etc.).
@@ -75,7 +77,7 @@ Décidé. Même approche : `Dockerfile`/`docker-compose.yml`, manifests K8s (par
 Décidé. Le résultat de discovery inclut toujours une catégorie "unrecognized" listant les fichiers/dépendances non reconnus, jamais silencieusement ignorée. Elle nourrit l'amélioration continue de la table de signatures.
 
 **20. Comment l'utilisateur peut-il ajouter manuellement une source ou un outil ?**
-Proposition. Via la configuration du `Project` : entrées manuelles de type source (`ExternalSource` avec métadonnées) et déclaration d'un analyzer custom respectant le contrat d'adapter (cf. Q33).
+Décidé (résolu 2026-09-17). Deux voies, sans mécanisme de plugin (Q189) : (1) une **source** se déclare en configuration (`[[repositories]]` ; à terme `[[external_sources]]` pour une `ExternalSource` non analysée) ; (2) un **outil** s'ajoute in-tree : un `AdapterManifest` + un stage dans `STAGE_REGISTRY` (Q181). On refuse volontairement la déclaration d'une commande d'analyzer arbitraire dans la configuration : un `.atlas.toml` présent dans un repository analysé deviendrait un vecteur d'exécution de code non consenti. Statut : voie (2) implémentée ; `[[external_sources]]` non implémenté.
 
 ---
 
@@ -85,22 +87,22 @@ Proposition. Via la configuration du `Project` : entrées manuelles de type sour
 Décidé. Un outil par catégorie P0 : **tokei** pour la détection de langages et LOC (binaire Rust, sortie JSON, offline), **graphify** pour l'extraction du graphe de code (imports/calls/symbols, multi-langages), **Git** natif pour l'historique. Complexité et scanners IaC/CI restent optionnels/dégradables au MVP.
 
 **22. Quels outils sont considérés comme obligatoires pour le MVP ?**
-Proposition. Un détecteur de langage/LOC, Git (natif), un outil de code graph (Graphify ou équivalent), un outil de complexité par langage supporté. Tout le reste est optionnel/dégradable.
+Décidé (résolu 2026-09-17, confirmé par l'implémentation). Requis pour un rapport complet : Git, tokei (langages/LOC), graphify (code graph), lizard (complexité). Aucun n'est bloquant pour l'exécution : un outil absent marque son stage `skipped:tool_not_found` avec la commande d'installation (Q25/Q29) — « obligatoire » veut dire « nécessaire à la qualité », pas « nécessaire au démarrage ». lizard est une dépendance Python d'Atlas (toujours présente) et couvre à lui seul les langages du MVP (Q193), ce qui remplace « un outil de complexité par langage ».
 
 **23. Quels outils sont optionnels ?**
-Proposition. IaC, Kubernetes, CI/CD, OpenAPI, observabilité, security scanning — tous "meilleur effort" : leur absence dégrade le rapport (sections marquées `not_analyzed`) sans bloquer l'exécution.
+Décidé (résolu 2026-09-17). Tout le reste est optionnel et best-effort : IaC, Kubernetes, CI/CD, OpenAPI, observabilité, security scanning. Au MVP seule leur **détection** par signatures existe (stage `discovery`), pas leur analyse ; leur absence n'empêche rien (cf. Q196, Q199).
 
 **24. Comment un analyzer est-il déclaré ?**
 Décidé. Manifest déclaratif par adapter : nom, catégorie, langages/écosystèmes supportés, commande d'invocation, format de sortie attendu, version minimale, mode d'échec. Pas de code custom requis pour un simple wrapping CLI → JSON.
 
 **25. Comment son installation est-elle gérée ?**
-Proposition. Détection de présence (`which`/version check) avant exécution ; pas d'installation automatique au MVP (risque de sécurité/consentement) — l'outil signale l'absence et propose la commande d'installation à l'utilisateur.
+Décidé (résolu 2026-09-17, implémenté). Vérification de présence (`shutil.which`) puis de version (`<binaire> --version` comparé à `min_version`/`max_version`) avant exécution. Jamais d'installation automatique : installer un binaire sur le poste de l'utilisateur sans consentement explicite est un risque de sécurité. L'absence produit `skipped:tool_not_found` avec l'`install_hint` du manifest, affiché dans la sortie CLI.
 
 **26. Peut-on utiliser un binaire externe ?**
 Décidé — oui, c'est le mode principal d'un adapter (invocation de process, capture stdout/stderr, parsing du format de sortie).
 
 **27. Peut-on utiliser Docker pour encapsuler un analyzer ?**
-Proposition — oui en option pour les outils sans binaire natif portable, mais pas comme dépendance obligatoire au MVP (coût de démarrage, contrainte offline).
+Décidé (résolu 2026-09-17). Non au MVP : aucun des outils retenus (git, tokei, graphify, lizard) n'en a besoin, et Docker ajouterait un prérequis lourd, un coût de démarrage et casserait l'usage offline sur les postes sans Docker. Le contrat d'adapter (commande argv ou callable) permettrait de l'ajouter sans changement si un futur outil n'existait qu'en image.
 
 **28. Comment gère-t-on une version incompatible d'un outil ?**
 Décidé. Le manifest d'adapter déclare une plage de version supportée ; une version hors plage produit un warning explicite et l'analyzer est marqué `skipped: version_mismatch`, jamais exécuté à l'aveugle.
@@ -112,10 +114,10 @@ Décidé. L'analyzer est marqué `skipped: tool_not_found` dans les facts ; le r
 Décidé. Échec isolé par analyzer (try/catch au niveau de l'orchestrateur), jamais fatal pour l'ensemble de l'analyse. Statut `failed` + message d'erreur capturé comme evidence, cf. Q180.
 
 **31. Comment versionne-t-on les adapters ?**
-Proposition. Version sémantique propre à l'adapter (indépendante de la version de l'outil externe qu'il wrappe), pour permettre l'évolution du format de sortie normalisé sans casser les facts existants.
+Décidé (résolu 2026-09-17, implémenté). `AdapterManifest.version` est la semver propre à l'adapter, indépendante de l'outil wrappé (dont la plage supportée est `min_version`/`max_version`) ; elle est tracée dans chaque fact via `source_analyzer = "<nom>@<version>"`. Ce qui compte pour les consommateurs est le format normalisé produit par l'adapter, pas la version de l'outil.
 
 **32. Comment testons-nous les adapters ?**
-Proposition. Tests de contrat : fixtures de sortie brute réelle de l'outil externe → assertion sur le format `Fact[]` normalisé produit. Pas de dépendance à l'outil externe installé en CI (sauf tests d'intégration optionnels).
+Décidé (résolu 2026-09-17, implémenté). Tests de contrat sur sortie brute réelle enregistrée (`tests/fixtures/*_output.json`) → assertions sur les `Fact` produits ; la suite ne requiert aucun outil externe. Les tests d'intégration contre les vrais outils sont remplacés par le **dogfooding obligatoire** (CLAUDE.md) après toute modification d'`analyze` — c'est ce qui a trouvé l'essentiel des bugs réels (Features 04b, 08b, 09b, 10b, 11c…).
 
 **33. Quel contrat de sortie impose-t-on à tous les adapters ?**
 Décidé. Chaque adapter doit produire une liste de `Fact` (cf. section D) avec `type`, `entities`/`relations` concernées, `evidence`, `confidence`, `provenance = deterministic|existing_tool`. Aucune sortie libre non structurée n'est acceptée en sortie d'adapter.
@@ -155,7 +157,7 @@ Décidé. `{ source_type, identifier, url? }` — ex. `{ source_type: "confluenc
 Décidé. Champ `provenance` sur chaque Fact (`observed|computed|inferred|hypothesis`, cf. Q45) + `source_analyzer` (quel adapter/composant l'a produit) + `retrieved_at`.
 
 **44. Comment représente-t-on la confiance ?**
-Proposition. Score continu `[0,1]` plutôt qu'une énumération, calculé différemment selon `provenance` : `observed`/`computed` = 1.0 par défaut (fiabilité de l'outil source) ; `inferred`/`hypothesis` = score explicite fourni par le composant qui infère, jamais implicite.
+Décidé (résolu 2026-09-17, implémenté). `confidence: float` dans `[0,1]` sur chaque fact : 1.0 pour `observed`/`computed` ; fourni explicitement par le composant qui infère ou par le LLM pour `inferred`/`hypothesis`, jamais implicite. Une énumération (low/medium/high) aurait perdu l'ordre fin nécessaire pour classer des hypothèses concurrentes (Q82).
 
 **45. Comment distingue-t-on `observed`, `computed`, `inferred` et `hypothesis` ?**
 Décidé. `observed` = extrait directement d'une source sans transformation (ex. "ce fichier existe"). `computed` = dérivé déterministiquement de facts observés (ex. centralité, churn). `inferred` = déduction non déterministe mais raisonnée par une règle interne (ex. "ce répertoire est probablement une boundary"). `hypothesis` = proposition LLM non vérifiable déterministiquement (ex. "ce système suit un pattern hexagonal"). Ce sont les quatre valeurs du champ `provenance`, et le rapport HTML doit visuellement les distinguer (cf. Q136).
@@ -170,7 +172,7 @@ Décidé — oui, c'est une exigence : la couche `Calculations`/`LLM synthesis` 
 Décidé — oui, obligatoire dès le MVP (condition de Q47 et de la génération du rapport/MCP).
 
 **49. Quel format de stockage : JSON, SQLite, graph DB, autre ?**
-Proposition. SQLite comme store principal (facts + relations en tables, portable, pas de dépendance serveur, interrogeable en SQL pour le MCP), avec export JSON pour portabilité/versioning et debug humain. Une vraie graph DB (Neo4j etc.) est un P2 pour les très gros monorepos si SQLite devient limitant (cf. Q158).
+Décidé (résolu 2026-09-17, implémenté). SQLite via l'ORM SQLAlchemy, un fichier par chemin analysé : `<repo>/.atlas-cache/facts.sqlite` (tables `facts`, `fact_evidence`, `entities`, `schema_meta`). Raisons : un fichier, aucun serveur, requêtable par le MCP, append-only naturel (Q46). Pas de graph DB tant qu'aucun goulot n'est mesuré (Q158) : le graphe est reconstruit en mémoire (networkx) quand un calcul en a besoin. L'export JSON est couvert par `atlas facts query --json` (filtrable par type, run, provenance) ; pas de commande d'export complet tant qu'aucun usage ne la demande.
 
 **50. Comment versionne-t-on le schema des facts ?**
 Décidé. Champ `schema_version` sur chaque Fact ; migrations explicites documentées entre versions majeures ; le store SQLite embarque sa propre version de schema vérifiée au démarrage.
@@ -189,10 +191,10 @@ Décidé. L'extraction structurelle (symboles, imports, appels, héritage) vient
 Décidé. Les calculs transverses (centralité, communautés, cycles si non fournis, corrélation avec Git/hotspots) et la fusion multi-repository/multi-outil du graph.
 
 **53. Utilisons-nous Graphify directement ?**
-Proposition — oui par défaut comme provider de référence, mais via une interface `GraphProvider` abstraite pour ne pas coupler le modèle de Facts à un outil spécifique (cf. Q54).
+Décidé (résolu 2026-09-17, implémenté). graphify est le provider de référence, derrière le protocole `GraphProvider` (`code_graph/provider.py`) : le modèle de facts et les calculs de graph ne dépendent pas de graphify.
 
 **54. Quels autres graph providers devons-nous supporter ?**
-Proposition. Au moins un provider par écosystème majeur non couvert nativement par Graphify si besoin (ex. un outil spécifique à un langage). Décision concrète différée jusqu'à connaître les limites réelles de Graphify sur les langages cibles du MVP (cf. Q193).
+Décidé (résolu 2026-09-17). Aucun autre provider au MVP : graphify couvre les langages retenus (Q193). Un second provider ne sera ajouté que sur un manque constaté (langage non couvert, relations manquantes mesurées), via `GraphProvider`, sans toucher au modèle (Q183).
 
 **55. Comment normalisons-nous les différents graph formats ?**
 Décidé. Chaque `GraphProvider` traduit sa sortie native vers les entités/relations standard du modèle de Facts (Q35/Q36) — la normalisation est la responsabilité de l'adapter, pas du consommateur.
@@ -204,22 +206,22 @@ Décidé — cf. Q36 : `depends_on`, `calls`, `imports`, `inherits_from` au mini
 Décidé — via `provenance` sur la relation comme sur tout Fact (Q45) : une relation `imports` extraite du code est `observed` ; une relation "probable boundary" est `inferred`.
 
 **58. Comment gère-t-on les graphs énormes ?**
-Proposition. Pagination/streaming depuis le store (SQLite) plutôt que chargement en mémoire complet ; le rapport HTML charge le graph par niveau (cf. Q59) et à la demande plutôt que d'embarquer un graph complet dans le HTML pour les gros repos.
+Décidé (résolu 2026-09-17). Pas de pagination/streaming depuis le store au MVP : les repositories dogfoodés (jusqu'à ggshield et ses 374 communautés) tiennent en mémoire. Le volume est maîtrisé côté consommation : le rapport n'embarque que des vues bornées (top-N centralité pour le system map, 20 plus grandes communautés pour le code map, Q140d/Q140e) et chaque requête MCP est bornée (Q152). Rouvert si la taille cible (Q155) est dépassée en pratique.
 
 **59. Faut-il produire plusieurs niveaux de graph ?**
-Décidé — oui : au moins `system` (repositories/services), `module/directory`, et `file/symbol`. Le rapport doit permettre de naviguer du niveau macro au niveau micro (drill-down), pas d'afficher un graph plat de milliers de nœuds.
+Décidé — oui : au moins `system` (repositories/services), `module/directory`, et `file/symbol`. Le rapport doit permettre de naviguer du niveau macro au niveau micro (drill-down), pas d'afficher un graph plat de milliers de nœuds. **Statut (2026-09-17) : partiel** — l'agrégation par répertoire/module existe (`code_graph/aggregation.py`) ; le rapport offre une vue fichiers (system map) et une vue communautés (code map), sans drill-down navigable entre niveaux (vue interactive P2, Q129).
 
 **60. Comment calcule-t-on les communautés ?**
-Proposition. Algorithme standard de détection de communauté (ex. Louvain) appliqué au graph de dépendances au niveau module/fichier, calcul interne déterministe (pas de LLM), fourni par une librairie de graph existante plutôt que réimplémenté.
+Décidé (résolu 2026-09-17, implémenté). Louvain (`networkx.algorithms.community.louvain_communities`) sur le graphe imports/calls rendu non orienté, au niveau fichier, avec `seed=42` pour que deux runs sur le même code donnent les mêmes communautés.
 
 **61. Comment calcule-t-on la centralité ?**
-Proposition. Centralité de degré (in/out) comme métrique de base P0 ; betweenness/eigenvector centrality en P1 si le coût de calcul reste acceptable sur les tailles ciblées (cf. Q155).
+Décidé (résolu 2026-09-17, implémenté). Centralité de degré entrant/sortant (networkx) uniquement. Betweenness/eigenvector : non au MVP — coût bien supérieur sur les gros graphes, gain non démontré pour l'onboarding ; rouvert si l'évaluation (Q203) montre que le degré rate des fichiers pivots.
 
 **62. Comment détecte-t-on les cycles ?**
 Décidé. Détection algorithmique classique (Tarjan/SCC) sur le graph de dépendances, déterministe, fournie par une librairie existante ou par le graph provider s'il l'expose déjà.
 
 **63. Quelle information doit être accessible au MCP ?**
-Proposition. Le graph au niveau `module`/`file`/`symbol` interrogeable par requêtes bornées (voisinage direct, chemin entre deux nœuds, top-N centralité) — jamais un dump complet du graph (cf. Q152).
+Décidé (résolu 2026-09-17, implémenté par les primitives de Q141). Voisinage direct (`get_dependencies`/`get_dependents`), plus court chemin borné (`get_path`), top-N (`get_hotspots`, repli centralité de `where_to_start`), au niveau fichier ; jamais de dump. Les niveaux `module`/`symbol` via MCP seront ajoutés sur un besoin d'agent constaté.
 
 ---
 
@@ -229,16 +231,16 @@ Proposition. Le graph au niveau `module`/`file`/`symbol` interrogeable par requ�
 Décidé (MVP, cf. Capability Matrix section 4) : complexité, taille (LOC), couplage/centralité du graph, churn Git. Runtime data en P1 si disponible.
 
 **65. Le score doit-il être configurable ?**
-Proposition — oui, pondérations exposées en configuration avec des valeurs par défaut raisonnables, pour s'adapter à des contextes de mission différents (ex. audit sécurité vs onboarding).
+Décidé (résolu 2026-09-17). Oui : section `[hotspot_weights]` de `.atlas.toml`, défauts complexity 1.0, size 0.5, centrality 1.0, churn 1.0 (la taille à demi-poids car fortement corrélée à la complexité). Statut : défauts implémentés ; la configuration est lue mais **pas encore transmise** au stage hotspots.
 
 **66. Les poids sont-ils fixes ou adaptatifs ?**
-Proposition. Fixes par défaut (transparence et reproductibilité) ; un mode adaptatif basé sur le contexte de mission est un P2, pas un prérequis MVP.
+Décidé (résolu 2026-09-17). Fixes. Des poids adaptatifs rendraient le score non reproductible et plus difficile à expliquer (Q73) ; le besoin « contexte de mission » est couvert par la configuration (Q65).
 
 **67. Comment normalise-t-on les métriques entre projets ?**
-Proposition. Normalisation par percentile/z-score au sein du projet analysé (pas de comparaison inter-projets au MVP) — chaque métrique est ramenée à sa distribution locale avant pondération.
+Décidé (résolu 2026-09-17, implémenté). Rang percentile par composante, calculé sur la distribution du repository analysé (ex æquo = rang moyen). Pas de z-score : trop sensible aux distributions très asymétriques typiques du churn et de la complexité. Pas de comparaison inter-projets.
 
 **68. Comment évite-t-on qu'un énorme fichier domine artificiellement ?**
-Proposition. Pénaliser une métrique de taille brute par une normalisation logarithmique, et ne jamais utiliser la taille seule comme signal — toujours combinée à complexité/couplage/churn (cf. Q72).
+Décidé (résolu 2026-09-17, implémenté). `log1p(LOC)` avant le rang percentile, poids réduit (0.5), et la taille n'est jamais un signal seul : elle n'entre que dans le score combiné, dont les composantes disponibles sont explicites (`components_available`, Q74).
 
 **69. Comment intègre-t-on Git churn ?**
 Décidé. Nombre de commits touchant le fichier sur une fenêtre configurable (cf. Q108/Q109), normalisé, comme une des composantes du score.
@@ -250,7 +252,7 @@ Décidé. Centralité (Q61) normalisée comme composante du score — un fichier
 Décidé. Sortie de l'outil de complexité (cyclomatic/cognitive selon disponibilité par langage) normalisée comme composante du score.
 
 **72. Comment intègre-t-on runtime data lorsqu'elle est disponible ?**
-Proposition — P1. Si des données runtime (fréquence d'invocation, erreurs) sont disponibles via un connector observabilité, elles s'ajoutent comme composante additionnelle optionnelle, jamais requise.
+Décidé (résolu 2026-09-17). P2, hors MVP : dépend d'un connector d'observabilité qui n'existe pas (Q121). Le jour venu, composante optionnelle soumise à la même règle d'exclusion explicite que Q74.
 
 **73. Comment explique-t-on le score ?**
 Décidé — obligatoire (Capability Matrix : "Le hotspot score doit être explicable et décomposable"). Chaque score de hotspot est accompagné de la décomposition par composante (valeur brute + valeur normalisée + poids) et des evidences sous-jacentes.
@@ -259,7 +261,7 @@ Décidé — obligatoire (Capability Matrix : "Le hotspot score doit être expli
 Décidé. Une composante manquante (ex. pas de données Git si scope superficiel) est explicitement exclue du calcul et signalée dans l'explication du score, jamais traitée comme zéro silencieux.
 
 **75. Peut-on avoir plusieurs scores : code hotspot, architectural hotspot, Git hotspot, runtime hotspot ?**
-Proposition — oui, en plus d'un score combiné : exposer les sous-scores par catégorie permet à l'utilisateur de comprendre *pourquoi* un fichier ressort, aligné avec le principe evidence-first.
+Décidé (résolu 2026-09-17, implémenté sous forme de décomposition). Chaque `hotspot_score` stocke, par composante, valeur brute, valeur normalisée et poids, plus le score combiné : le « pourquoi » se lit directement. Pas de scores nommés séparés (code/architectural/Git) : ils se déduisent de la décomposition et multiplieraient les classements contradictoires dans le rapport.
 
 ---
 
@@ -272,7 +274,7 @@ Décidé. Un ensemble de facts `computed`/`observed` sur la structure du graph (
 Décidé. Une synthèse `hypothesis` produite par le LLM à partir de l'architecture observée, nommant un pattern connu (layered, hexagonal, microservices, etc.) avec un niveau de confiance et des citations vers les facts observés qui la soutiennent.
 
 **78. Quels patterns architecturaux cherchons-nous ?**
-Proposition. Un catalogue initial couvrant les patterns les plus fréquents en usage courant : layered/N-tier, hexagonal/ports-adapters, microservices, monolith modulaire, event-driven, MVC/MVVM. Extensible sans blocage (le LLM peut nommer un pattern hors catalogue en le marquant `uncatalogued`).
+Décidé (résolu 2026-09-17, implémenté). Catalogue fermé : `layered`, `hexagonal`, `microservices`, `modular_monolith`, `event_driven`, `mvc_mvvm`, `big_ball_of_mud`, plus `uncatalogued` (pattern hors catalogue, décrit en texte libre). `big_ball_of_mud` permet au modèle de dire honnêtement qu'aucune structure n'émerge plutôt que de forcer un pattern. Toute valeur hors liste est normalisée à la source (Q83b). Étendre = ajouter une valeur dans `architecture/schema.py`.
 
 **79. Le LLM peut-il proposer un pattern architectural ?**
 Décidé — oui, mais uniquement comme `hypothesis` sourcée (cf. Q77), jamais présentée comme fait.
@@ -296,32 +298,32 @@ Décidé (résolu 2026-09-15, suite à un diagnostic concret sur des facts réel
 Décidé (résolu 2026-09-15, trouvé dans une synthèse réelle produite par l'agent `atlas-synthesis` sur un backend Django : une hypothèse renvoyait `pattern="microservices"` pour une app dont le seul "service" est un package Python interne `services/`, sans le moindre déploiement séparé — le "My read" de l'agent l'a lui-même signalé comme faux). Différent du bug de Q83b : ici la valeur `pattern` est **valide** au sens de la catalogue, donc la validation défensive de la Feature 08b ne peut rien détecter — c'est un mauvais choix sémantique, pas une valeur hors catalogue. Fix : clarification explicite dans le prompt — "microservices" signifie des processus/services déployés indépendamment (déployables séparés), jamais un simple nom de dossier/package interne à un seul processus. Implémenté par la nouvelle **Feature 08c**, additive sur la Feature 08/08b déjà livrée.
 
 **84. Peut-on comparer architecture déclarée dans la documentation et architecture observée ?**
-Proposition — P1. Utile pour détecter le "documentation drift" (Capability Matrix section 14) ; nécessite d'extraire une architecture "déclarée" depuis les docs (LLM, `hypothesis`) puis de la confronter à l'architecture observée.
+Décidé (résolu 2026-09-17). P2, non implémenté. Utile (documentation drift), mais demande une passe LLM de plus sur la documentation ; priorité après la qualité des trois passes existantes.
 
 ---
 
 # H. Domain understanding
 
 **85. Quels artefacts fournissons-nous au LLM ?**
-Proposition. Un sous-ensemble sélectionné : fichiers d'entrée jugés importants (cf. Q87), README/docs pertinents, signatures de types/entités extraites déterministiquement, noms de tests significatifs — jamais le repository complet (cf. Q93, non-goal explicite).
+Décidé (résolu 2026-09-17, implémenté par les Features 09/09b/04b). Les facts hotspot/centralité et le **contenu** d'au plus `top_n=20` fichiers candidats, par priorité hotspot > entrypoint > test de workflow, fichiers vides exclus. README/docs : non envoyés au MVP. Les symboles (`symbol_defined`) sont fournis à la passe onboarding (Q205b).
 
 **86. Combien de contexte LLM maximum ?**
-⚠️ **Ouvert — impact architectural.** Dépend du provider choisi (cf. Q94) et du budget (cf. Q101). Proposition par défaut : un budget de tokens configurable par run avec un plafond conservateur, le sélecteur de contenu (Q87) devant respecter ce budget plutôt que l'inverse.
+Décidé (résolu 2026-09-17). Pas de plafond de tokens global au MVP : la borne est **structurelle** — au plus 20 fichiers (Q85) et une sélection de facts par passe — ce qui garde les prompts dans la fenêtre des modèles locaux ~14B visés (Ollama) comme des modèles Claude. Une borne en nombre de fichiers est prévisible et explicable ; une borne en tokens dépend du tokenizer de chaque provider. Le mécanisme de budget en tokens existe (Feature 07, `BudgetTracker`) et sera câblé depuis la configuration avec Q101.
 
 **87. Comment sélectionnons-nous les fichiers importants ?**
 Décidé. Réutilisation directe du score de hotspot/centralité (section F) et des entrypoints détectés (Q43 de la Capability Matrix / graph) — sélection déterministe, pas de LLM pour choisir quoi lire.
 
 **88. Comment sélectionnons-nous les tests importants ?**
-Proposition. Tests couvrant les fichiers sélectionnés en Q87 (via mapping test→code si disponible) + tests dont le nom/chemin indique un workflow métier (heuristique de nommage).
+Décidé (résolu 2026-09-17, implémenté par la Feature 09b). Fichiers réellement identifiés comme tests (chemin sous `tests/`, `test_*`, `*_test`) **et** dont le nom évoque un workflow (`workflow`, `process`, `service`, `domain`, `handler`, `controller`), en dernière priorité dans le budget de Q85. Pas de mapping test→code : aucun outil du MVP ne le fournit.
 
 **89. Comment identifions-nous les workflows candidats ?**
-Proposition. Combinaison de chemins d'exécution dans le graph d'appel depuis les entrypoints + noms de tests d'intégration/e2e comme signal supplémentaire ; le LLM synthétise ensuite un workflow lisible à partir de ces candidats sourcés.
+Décidé (résolu 2026-09-17). Au MVP, la passe domaine fait proposer les workflows par le LLM à partir des fichiers candidats (Q85/Q88), chaque workflow citant ses facts (implémenté). Reconstituer des chemins d'exécution dans le call graph depuis les entrypoints : P1, non implémenté — les relations `calls` inter-fichiers ne sont pas encore assez fiables pour cela.
 
 **90. Comment extrayons-nous les états ?**
-Proposition — P1. Détection déterministe d'enums/constantes de statut dans les entités identifiées (Q102 Capability Matrix), complétée par le LLM pour nommer une éventuelle state machine implicite (`hypothesis`).
+Décidé (résolu 2026-09-17). P2, non implémenté. La méthode proposée (enums/constantes de statut détectés déterministiquement, state machine nommée par le LLM en `hypothesis`) reste la cible.
 
 **91. Comment extrayons-nous les événements ?**
-Proposition — P1. Signal déterministe : noms de classes/fonctions/topics contenant des patterns d'event (`*Event`, `emit`, `publish`, noms de topics de queue détectés en Q118 Capability Matrix) ; interprétation métier laissée au LLM.
+Décidé (résolu 2026-09-17). P2, non implémenté. Même approche : signaux de nommage déterministes (`*Event`, `emit`, `publish`, topics), interprétation métier par le LLM en `hypothesis`.
 
 **92. Comment conservons-nous les preuves ?**
 Décidé — même mécanisme que tout le reste (Q37) : chaque affirmation de domain understanding référence les facts/fichiers/lignes qui l'ont motivée.
@@ -347,13 +349,13 @@ Fix, dans `domain/selector.py` et `domain/analyzer.py` uniquement (pas de change
 # I. LLM orchestration
 
 **96. Combien de passes LLM sont nécessaires ?**
-Proposition. Multi-passes spécialisées plutôt qu'un unique appel monolithique : au minimum une passe par grande section nécessitant interprétation (architecture, domaine, onboarding path), chacune avec un contexte borné et un schema de sortie dédié — plus fiable à valider (Q81) qu'un unique prompt géant.
+Décidé (résolu 2026-09-17, implémenté). Trois passes spécialisées et séquentielles — architecture, domaine, onboarding — chacune avec son schéma de réponse (dataclass → JSON Schema), ses citations, un retry ; l'onboarding consomme les résultats des deux premières.
 
 **97. Peut-on réaliser le rapport avec un seul appel final ?**
 Décidé — non par défaut, pour les raisons de Q96 (validation, citations, budget) ; peut rester une option "fast/cheap" dégradée en P2 avec avertissement de confiance réduite.
 
 **98. Quels agents spécialisés sont réellement nécessaires ?**
-Proposition (alignée avec la Capability Matrix, colonnes LLM) : synthèse architecture, synthèse domaine/business, génération onboarding path. Ce sont les trois seules zones où la Capability Matrix marque LLM comme requis en P0 sans alternative déterministe.
+Décidé (résolu 2026-09-17, implémenté). Exactement ces trois-là. L'agent `atlas-synthesis` (Q154b) n'est pas un agent du pipeline : c'est un consommateur externe du MCP.
 
 **99. Quels agents peuvent être remplacés par des analyzers déterministes ?**
 Décidé — aucun agent "LLM" ne doit exister là où la Capability Matrix marque une case déterministe/interne sans LLM (ex. hotspots, centralité, cycles) : le principe deterministic-first s'applique strictement à la conception des agents, pas seulement aux données.
@@ -362,10 +364,10 @@ Décidé — aucun agent "LLM" ne doit exister là où la Capability Matrix marq
 Décidé — mécanisme combiné : sélection de contenu bornée (Q87), budget par passe (Q101), troncature explicite avec log plutôt que silencieuse.
 
 **101. Comment impose-t-on un budget ?**
-Proposition. Budget de tokens (et donc de coût) configurable par run au niveau `Project`, réparti par passe LLM selon des quotas par défaut, avec arrêt/dégradation propre (cf. Q107) si dépassement plutôt qu'un échec dur.
+Décidé (résolu 2026-09-17). Budget en tokens par run (`llm.budget_tokens`), vérifié avant chaque appel par `BudgetTracker` ; dépassement → `not_analyzed: budget_exceeded` pour la passe concernée, le pipeline continue (jamais d'échec dur). Statut : mécanisme implémenté (Feature 07) ; la configuration est lue mais **pas encore câblée** (budget illimité aujourd'hui) ; la répartition par passe viendra avec ce câblage.
 
 **102. Comment cache-t-on les résultats ?**
-Proposition. Cache clé par (hash du contenu envoyé au LLM + version du prompt + provider/modèle) → réponse. Persisté dans le même store que les facts pour survivre entre runs.
+Décidé (résolu 2026-09-17, implémenté). Clé SHA-256 de (instructions + contenu + version de schéma + `provider_id`, qui inclut le modèle, ex. `ollama:qwen3:14b`) → réponse JSON. Persisté dans `.atlas-cache/llm_cache.sqlite`, fichier distinct du store de facts pour pouvoir vider le cache sans perdre l'historique. Seules les réponses ayant passé la validation de citations sont mises en cache.
 
 **103. Comment invalidons-nous un résultat après modification du code ?**
 Décidé — conséquence directe de Q102 : si le contenu sous-jacent (fichiers sélectionnés, facts amont) change, le hash change, donc le cache est naturellement invalidé sans mécanisme de dépendance explicite à maintenir.
@@ -387,7 +389,7 @@ Décidé — échec isolé par passe (même logique que Q30 pour les adapters) :
 # J. Git
 
 **108. Quelle profondeur d'historique analyse-t-on ?**
-Proposition. Fenêtre configurable, par défaut une période raisonnable (ex. 12 mois) plutôt que l'historique complet, pour borner le coût sur de vieux/gros repositories — configurable à "tout l'historique" si l'utilisateur le souhaite.
+Décidé (résolu 2026-09-17). Historique complet par défaut — ce qui s'écarte de la proposition initiale (12 mois) : sur les repositories dogfoodés, `git log --numstat` sur tout l'historique reste rapide, et une fenêtre courte masquait des fichiers structurellement instables mais peu modifiés récemment. La fenêtre est supportée par le code (`AnalysisWindow`) ; son exposition en CLI/configuration n'est **pas implémentée**.
 
 **109. Analyse-t-on toute l'histoire ou une fenêtre configurable ?**
 Décidé — fenêtre configurable par défaut (cf. Q108), historique complet en option explicite.
@@ -396,16 +398,16 @@ Décidé — fenêtre configurable par défaut (cf. Q108), historique complet en
 Décidé. Nombre de commits (ou lignes modifiées, les deux exposées séparément) touchant un fichier sur la fenêtre, via `git log`/`git blame`, calcul interne déterministe.
 
 **111. Comment calcule-t-on le co-change ?**
-Proposition. Fichiers apparaissant ensemble dans un même commit au-delà d'un seuil de fréquence sur la fenêtre analysée — calcul interne déterministe, standard dans les outils de Git mining.
+Décidé (résolu 2026-09-17, implémenté). Paires de fichiers modifiés dans un même commit (hors merges), retenues à partir de 2 commits communs sur la fenêtre analysée.
 
 **112. Comment gère-t-on les renames ?**
-Décidé. Suivi de renommage natif de Git (`git log --follow` / détection de similarité) pour préserver la continuité de l'historique d'un fichier à travers ses renommages.
+Décidé. Suivi de renommage natif de Git (`git log --follow` / détection de similarité) pour préserver la continuité de l'historique d'un fichier à travers ses renommages. **Statut (2026-09-17) : implémenté par la Feature 04c** — la détection de renommage de Git (`-M`) est lue en une seule passe de `git log` (notations `old => new` et `pre{old => new}post` pour le churn, `--name-status` pour le co-change) : tout l'historique d'un fichier renommé, y compris antérieur au renommage, est rattaché à son chemin le plus récent, sans entité fantôme. `--follow` par fichier n'est pas utilisé (une passe par fichier) ; cf. `docs/improvement-ideas.md` §2.1.
 
 **113. Comment gère-t-on les merge commits ?**
-Proposition. Exclusion des merge commits du calcul de churn par défaut (pour ne pas gonfler artificiellement les fichiers touchés par de gros merges), avec option pour les inclure.
+Décidé (résolu 2026-09-17, implémenté). Merges exclus (`--no-merges`) pour churn et co-change. L'inclusion existe dans le code (`include_merges`) mais n'est pas exposée en CLI.
 
 **114. Comment gère-t-on les monorepos ?**
-Proposition. Le calcul de churn/co-change reste global au repository, mais les hotspots (section F) sont toujours rapportés au niveau `Project`/scope déclaré, pour que le bruit d'un monorepo entier ne pollue pas l'analyse d'un sous-scope ciblé.
+Décidé (résolu 2026-09-17, implémenté par la Feature 04b). On analyse le sous-dossier passé en `PATH` : l'historique Git est lu pour tout le dépôt, mais les chemins sont rebasés sur ce sous-dossier, si bien que seuls ses fichiers se joignent aux autres facts et entrent dans les hotspots. Pratique documentée pour un monorepo : passer le sous-projet comme `PATH` (Q158).
 
 **115. Comment détecte-t-on les hotspots historiques ?**
 Décidé — c'est la combinaison churn + centralité + complexité déjà définie en section F ; pas de mécanisme distinct.
@@ -430,38 +432,38 @@ Décidé — oui, c'est la conséquence naturelle du modèle multi-repository (Q
 Décidé — même traitement que Q6/Q29 : `ExternalSource`/`Repository` avec statut `not_analyzed`, jamais une absence silencieuse.
 
 **120. Comment gère-t-on les sources accessibles uniquement via API ?**
-Proposition — P1. Un `Connector` (distinct d'un adapter local) qui interroge une API externe (ex. dashboard SaaS, registre de conteneurs) selon le même contrat de sortie que les adapters (Q33), avec gestion explicite des credentials (Q122).
+Décidé (résolu 2026-09-17). P2, non implémenté. Contrat retenu : un `Connector` produit des `Fact` exactement comme un adapter (Q33) et lit ses credentials dans l'environnement (Q122).
 
 **121. Quels connectors sont supportés ?**
-⚠️ **Ouvert.** Non spécifié dans les documents actuels ; à trancher avec la liste d'outils MVP (Q21).
+Décidé (résolu 2026-09-17). Aucun connector au MVP. Premier candidat quand un utilisateur en exprimera le besoin : un dépôt Git distant déclaré (repository IaC/GitOps cloné en lecture) — c'est celui qui sert le plus directement « Repository != System » sans credentials SaaS. Les connectors SaaS (dashboards, registres) suivront l'usage réel.
 
 **122. Comment gère-t-on les credentials ?**
-Proposition. Jamais stockés par Project Intelligence lui-même : lecture depuis l'environnement/gestionnaire de secrets de l'utilisateur au moment de l'exécution, jamais persistés dans les facts ni loggés (cf. Q170).
+Décidé (résolu 2026-09-17). Jamais stockés ni journalisés par Atlas ; lus dans l'environnement au moment de l'exécution. Au MVP, le seul secret en jeu est l'authentification du CLI `claude` (provider `claude-code`), entièrement gérée par Claude Code : Atlas ne la voit pas.
 
 **123. Le système doit-il fonctionner sans credentials ?**
 Décidé — oui, obligatoire : tout connector nécessitant des credentials est optionnel et son absence dégrade proprement (Q29/Q119), jamais bloquant pour le reste du pipeline.
 
 **124. Comment sépare-t-on données locales et données sensibles ?**
-Proposition. Marquage explicite au niveau de la source (repository/connector) d'un niveau de sensibilité ; ce marquage conditionne ce qui peut être envoyé au LLM (cf. Q125) et ce qui reste local uniquement.
+Décidé (résolu 2026-09-17). Au MVP la séparation est choisie par l'utilisateur au niveau du run : provider local (Ollama) ou `--no-llm` → aucune donnée ne sort ; provider `claude-code` → la sélection bornée de Q85 sort. Un marquage de sensibilité par source est P2, avec les analyses multi-sources.
 
 **125. Quelles données ne doivent jamais être envoyées au LLM ?**
-Proposition. Secrets détectés (Q165), credentials, contenu de fichiers marqués confidentiels par configuration, et par défaut tout contenu brut de fichier au-delà de la sélection bornée déjà définie (Q93) — le principe s'applique aussi bien à la donnée qu'au volume.
+Décidé (résolu 2026-09-17). Ne sortent jamais : le repository complet, tout contenu hors sélection bornée (Q93), les données nominatives Git (Atlas ne collecte d'ailleurs pas les auteurs), les secrets détectés (Q165). Statut : la borne de volume est implémentée ; le filtrage des secrets ne l'est pas — d'où la recommandation documentée d'utiliser Ollama ou `--no-llm` sur du code client.
 
 ---
 
 # L. HTML report
 
 **126. Quelle structure exacte du rapport ?**
-Décidé — reprend directement la liste du Product Brief section 5 : executive summary, system map, architecture, code map, hotspots, domain understanding, runtime, infrastructure, CI/CD, data architecture, observability, tests, Git evolution, risks/anomalies, onboarding path, glossary, evidence.
+Décidé — reprend directement la liste du Product Brief section 5 : executive summary, system map, architecture, code map, hotspots, domain understanding, runtime, infrastructure, CI/CD, data architecture, observability, tests, Git evolution, risks/anomalies, onboarding path, glossary, evidence. **Statut (2026-09-17) : partiel** — voir Q199 : les sections runtime, infrastructure, CI/CD, data, observabilité et tests arriveront avec leurs analyzers.
 
 **127. Quelle navigation ?**
-Proposition. Navigation latérale persistante par section (miroir de Q126) + recherche globale (Q133) + fil d'Ariane pour le drill-down graph (Q59).
+Décidé (résolu 2026-09-17, implémenté). Navigation latérale persistante par section + recherche globale. Pas de fil d'Ariane : il n'y a pas de drill-down multi-niveaux au MVP (vue graphe interactive différée, Q129).
 
 **128. Quels diagrammes ?**
-Proposition. Au minimum : system map (composants/repositories), code graph par niveau (Q59), diagramme de dépendances CI/CD (commit→prod, Q150 Capability Matrix), diagramme d'entités de données.
+Décidé (résolu 2026-09-17, implémenté). System map (Mermaid, top-N fichiers par centralité avec leurs arêtes) et code map (SVG des communautés : taille, importance, liens). Diagrammes CI/CD et entités de données : ajoutés avec les analyses correspondantes (Q196), pas avant.
 
 **129. Mermaid ou autre moteur ?**
-Décidé (résolu 2026-09-14, suite à un constat direct sur le rapport généré : les blocs Mermaid n'affichaient qu'un texte "Load mermaid.js locally to render diagram" — aucun diagramme ne s'affichait jamais, en contradiction avec Q137/Q138 déjà Décidé). Mermaid pour les diagrammes statiques simples, mais **vendoré/embarqué inline** : le bundle UMD complet de mermaid.js est inclus tel quel dans un `<script>` du fichier HTML généré (pas de `<script src="https://...">`, pas de placeholder "chargez-le vous-même") — c'est la seule façon dont "autonome/offline" (Q137/Q138) peut signifier "le diagramme s'affiche réellement dans le navigateur" plutôt que "le HTML ne fait pas d'appel réseau mais n'affiche rien d'utile". Un rendu graphe interactif dédié (ex. force-directed / cytoscape.js) pour le code graph navigable reste **Proposition**, différé — Mermaid seul ne scale pas à un graph de milliers de nœuds mais suffit au MVP. Implémenté par la nouvelle **Feature 11b** (additive sur la Feature 11 déjà livrée).
+Décidé (résolu 2026-09-14, suite à un constat direct sur le rapport généré : les blocs Mermaid n'affichaient qu'un texte "Load mermaid.js locally to render diagram" — aucun diagramme ne s'affichait jamais, en contradiction avec Q137/Q138 déjà Décidé). Mermaid pour les diagrammes statiques simples, mais **vendoré/embarqué inline** : le bundle UMD complet de mermaid.js est inclus tel quel dans un `<script>` du fichier HTML généré (pas de `<script src="https://...">`, pas de placeholder "chargez-le vous-même") — c'est la seule façon dont "autonome/offline" (Q137/Q138) peut signifier "le diagramme s'affiche réellement dans le navigateur" plutôt que "le HTML ne fait pas d'appel réseau mais n'affiche rien d'utile". Un rendu graphe interactif dédié (ex. force-directed / cytoscape.js) pour le code graph navigable est différé en P2 (décidé 2026-09-17, cf. Q134) — Mermaid seul ne scale pas à un graph de milliers de nœuds mais suffit au MVP. Implémenté par la nouvelle **Feature 11b** (additive sur la Feature 11 déjà livrée).
 
 **130. Les diagrammes doivent-ils être générés à partir des facts ?**
 Décidé — oui, systématiquement : jamais de diagramme dessiné à la main ou par le LLM sans passer par les facts structurés, pour garantir que chaque élément visuel est cliquable vers son evidence (Q131).
@@ -476,10 +478,10 @@ Décidé — oui, même exigence que Q131 appliquée aux relations (quel adapter
 Décidé — oui, recherche full-text sur les entités (fichiers, symboles, composants) exigée dès le MVP pour la navigation.
 
 **134. Peut-on filtrer le graph ?**
-Proposition — oui : par type de relation, par niveau de confiance/provenance, par composant/module — nécessaire pour rendre un gros graph exploitable.
+Décidé (résolu 2026-09-17). P2. Le filtre texte global existe ; les filtres par type de relation / provenance / composant arriveront avec la vue graphe interactive (Q129).
 
 **135. Comment affiche-t-on les niveaux de confiance ?**
-Proposition. Codage visuel cohérent (ex. opacité ou bordure) reflétant le score de confiance (Q44/Q83), appliqué uniformément à tous les éléments visuels dérivés de facts `inferred`/`hypothesis`.
+Décidé (résolu 2026-09-17, implémenté). Badge de provenance coloré sur chaque élément, confiance en pourcentage en infobulle. Un encodage visuel supplémentaire (opacité, bordure) est P2.
 
 **136. Comment distingue-t-on fact / insight / hypothesis ?**
 Décidé — obligatoire (principe evidence-first) : un marqueur visuel systématique et explicite (badge/couleur/icône) reflétant le champ `provenance` (Q45), cohérent entre toutes les sections du rapport.
@@ -491,10 +493,10 @@ Décidé — oui, fichier HTML autonome sans dépendance réseau à l'ouverture 
 Décidé — oui : toutes les données et assets nécessaires embarqués (ou en fichiers locaux adjacents), pour être partageable/archivable sans serveur.
 
 **139. Peut-on exporter certaines vues ?**
-Proposition — P1. Export du JSON de facts sous-jacent (déjà requis, Q49) suffit comme export "données" ; un export image/PDF par vue est un nice-to-have P2.
+Décidé (résolu 2026-09-17). Pas d'export de vue dédié : le rapport est lui-même un fichier autonome partageable, et les données s'exportent via `atlas facts query --json`. Export image/PDF : P2.
 
 **140. Le rapport doit-il être versionnable ?**
-Décidé — oui : chaque génération de rapport embarque un timestamp, le `run_id`, et le commit hash de chaque repository analysé, pour permettre de comparer deux rapports dans le temps.
+Décidé — oui : chaque génération de rapport embarque un timestamp, le `run_id`, et le commit hash de chaque repository analysé, pour permettre de comparer deux rapports dans le temps. **Statut (2026-09-17) : partiel** — le rapport embarque `run_id` et horodatage (balises `meta`), pas encore le commit hash analysé.
 
 **140b. Le rapport doit-il présenter du texte narratif lisible, ou une liste de facts suffit-elle ?**
 Décidé (résolu 2026-09-14, suite à un retour utilisateur direct sur le v1 livré : *"c'est un listicle des facts avec lesquels on doit interagir pour espérer lire quelque chose"*). Non — une liste de facts cliquables ne suffit pas, même si elle respecte Q130 ("toujours rendre depuis les facts"). Chaque section doit présenter, en contenu principal, un **texte narratif en langage naturel** ; les facts individuels restent accessibles (comme aujourd'hui, via le drill-down evidence de Q131/Q132) mais deviennent des citations à l'appui du texte, pas le texte lui-même. Deux cas :
@@ -507,10 +509,10 @@ Implémenté par la nouvelle **Feature 11b** (additive sur la Feature 11 déjà 
 Décidé (résolu 2026-09-15, suite à un diagnostic concret : le rapport d'un run réel affichait "Not analyzed" pour Architecture/Domain alors que le même repository, analysé quelques heures plus tôt, avait produit 15 `architecture_hypothesis` et 5 `business_concept` dans le même store append-only — juste sous un autre `run_id`). Oui — chaque section interroge d'abord le `run_id` courant puis, si vide, retombe sur le **run le plus récent qui a des facts de ce type**, tous runs confondus pour ce repository (le store le permet déjà, `query_facts` sans filtre `run_id`). Le fallback n'est **jamais silencieux** : la prose de la section indique explicitement qu'il s'agit d'un résultat antérieur, avec le `run_id`/date d'origine. En complément (cf. Q180b) : les trois états auparavant confondus sous "Not analyzed" sont maintenant distingués et affichés — jamais lancé, LLM désactivé, LLM a échoué (avec la raison réelle), ou stage réussi mais rien trouvé. Répond directement au problème remonté : un texte LLM absent pour cause d'échec ne doit plus être indiscernable d'un texte absent parce qu'il n'y a vraiment rien à trouver. Implémenté par la nouvelle **Feature 11c**, additive sur la Feature 11/11b déjà livrée, qui s'appuie sur les facts `stage_run_result` de la Feature 06c (Q180b).
 
 **140d. Les bugs de correspondance de champs (fact → rendu) et l'absence d'arêtes dans le system map sont-ils un problème de scope ou un bug ?**
-Décidé (résolu 2026-09-15). Bug, pas un nouveau choix de design — confirmé en lisant un rapport réel contre son `FactStore` : le renderer lit des clés qui n'existent pas dans les facts réellement produits (`technology` au lieu de `name`, `score` au lieu de `combined` pour les hotspots, `score` inexistant pour la centrality qui n'a que `in_degree`/`out_degree`), avec repli silencieux vers une valeur trompeuse plutôt qu'une erreur visible. Le diagramme Mermaid du system map ne déclarait que des nœuds, jamais d'arêtes (les facts `imports`/`calls` existent pourtant), et l'identifiant de nœud (basename seul) provoque des collisions entre fichiers homonymes de chemins différents. Décision explicite sur la portée des arêtes : limiter aux relations entre les nœuds déjà sélectionnés (top-N par centralité), pas le graphe complet — une vue interactive complète (cytoscape.js, **Proposition Q129**, déjà différée) reste un sujet séparé, volontairement pas traité ici. Implémenté par la nouvelle **Feature 11c**.
+Décidé (résolu 2026-09-15). Bug, pas un nouveau choix de design — confirmé en lisant un rapport réel contre son `FactStore` : le renderer lit des clés qui n'existent pas dans les facts réellement produits (`technology` au lieu de `name`, `score` au lieu de `combined` pour les hotspots, `score` inexistant pour la centrality qui n'a que `in_degree`/`out_degree`), avec repli silencieux vers une valeur trompeuse plutôt qu'une erreur visible. Le diagramme Mermaid du system map ne déclarait que des nœuds, jamais d'arêtes (les facts `imports`/`calls` existent pourtant), et l'identifiant de nœud (basename seul) provoque des collisions entre fichiers homonymes de chemins différents. Décision explicite sur la portée des arêtes : limiter aux relations entre les nœuds déjà sélectionnés (top-N par centralité), pas le graphe complet — une vue interactive complète (cytoscape.js, P2, cf. Q129) reste un sujet séparé, volontairement pas traité ici. Implémenté par la nouvelle **Feature 11c**.
 
 **140e. La section Code Map doit-elle montrer un vrai graphe de communautés (taille, liens, importance) plutôt qu'une liste de facts par fichier ?**
-Décidé (résolu 2026-09-15, suite à une demande directe). Oui — Code Map agrège les facts `community` par `community_id` (pas un par fichier comme aujourd'hui) et affiche : **taille** = nombre de fichiers membres, **importance** = somme de la centralité (`in_degree + out_degree`) des fichiers membres — les deux dimensions demandées explicitement, jamais confondues en un seul nombre. Rendu en **SVG inline** généré au moment du rapport (pas Mermaid, qui ne sait pas encoder une taille de nœud) : rayon des bulles ∝ `sqrt(taille)`, couleur ∝ importance normalisée sur l'ensemble affiché, les deux valeurs aussi écrites en clair (l'encodage visuel ne remplace jamais le chiffre). Liens entre communautés = relations `imports`/`calls` inter-communautés agrégées, pondérées par leur nombre. Limité aux 20 plus grandes communautés (repli visuel nécessaire : un vrai repo peut en avoir plusieurs centaines — 374 pour ggshield), avec le nombre de communautés omises indiqué en prose. Layout circulaire déterministe, pas de physique interactive (reste **Proposition Q129**, toujours différée). Implémenté par la nouvelle **Feature 11d**, additive sur la Feature 11/11b/11c déjà livrée.
+Décidé (résolu 2026-09-15, suite à une demande directe). Oui — Code Map agrège les facts `community` par `community_id` (pas un par fichier comme aujourd'hui) et affiche : **taille** = nombre de fichiers membres, **importance** = somme de la centralité (`in_degree + out_degree`) des fichiers membres — les deux dimensions demandées explicitement, jamais confondues en un seul nombre. Rendu en **SVG inline** généré au moment du rapport (pas Mermaid, qui ne sait pas encoder une taille de nœud) : rayon des bulles ∝ `sqrt(taille)`, couleur ∝ importance normalisée sur l'ensemble affiché, les deux valeurs aussi écrites en clair (l'encodage visuel ne remplace jamais le chiffre). Liens entre communautés = relations `imports`/`calls` inter-communautés agrégées, pondérées par leur nombre. Limité aux 20 plus grandes communautés (repli visuel nécessaire : un vrai repo peut en avoir plusieurs centaines — 374 pour ggshield), avec le nombre de communautés omises indiqué en prose. Layout circulaire déterministe, pas de physique interactive (P2, cf. Q129). Implémenté par la nouvelle **Feature 11d**, additive sur la Feature 11/11b/11c déjà livrée.
 
 **140f. Le repli inter-runs (Q140c) et le résumé de l'architecture "uncatalogued" (Q83) produisent-ils un texte réellement lisible, ou juste une prose techniquement présente ?**
 Décidé (résolu 2026-09-17, suite à un retour direct sur deux rapports réels — *"les textes sont trop succincts, et forment à peine des phrases compréhensibles"*). Non, deux défauts distincts trouvés en lisant `html_report/renderer.py` contre les rapports générés :
@@ -524,13 +526,13 @@ Les deux fixes sont des changements de composition de prose dans `html_report/re
 # M. MCP
 
 **141. Quelles primitives MCP sont nécessaires ?**
-Proposition (dérivée de la Capability Matrix section 5/16 et des questions suivantes) : lookup composant, dépendances/dépendants, recherche de workflow, hotspots, chemin entre composants, "où commencer".
+Décidé (résolu 2026-09-17, implémenté par les Features 12/12b/12c). Huit primitives read-only et bornées : `get_component`, `get_dependencies`, `get_dependents`, `find_workflow`, `get_hotspots`, `get_path`, `where_to_start`, et `get_insights` (Feature 12d), chacune avec `repo_path` et `run_id` optionnel (défaut : dernier run contenant le type de fact interrogé, Feature 12d).
 
 **142. Le MCP expose-t-il les facts bruts ?**
-Décidé — oui, en lecture filtrée/paginée (pas de dump), pour permettre à un agent de vérifier une evidence précise.
+Décidé — oui, en lecture filtrée/paginée (pas de dump), pour permettre à un agent de vérifier une evidence précise. **Statut (2026-09-17) : non implémenté** — aucune primitive générique ne renvoie des facts filtrés par type ; seuls les facts d'un fichier (`get_component`), les insights repository (`get_insights`, Feature 12d) et les résultats des primitives dédiées sont exposés.
 
 **143. Le MCP expose-t-il les insights ?**
-Décidé — oui, avec leur `provenance`/confiance intacte : un agent consommateur doit pouvoir distinguer fact et hypothesis exactement comme le rapport HTML (Q136).
+Décidé — oui, avec leur `provenance`/confiance intacte : un agent consommateur doit pouvoir distinguer fact et hypothesis exactement comme le rapport HTML (Q136). **Statut (2026-09-17) : implémenté** — onboarding (`where_to_start`), workflows (`find_workflow`) et, depuis la Feature 12d, `architecture_hypothesis`, `business_concept` et `glossary_term` (`get_insights(kind=architecture|concepts|glossary)`) sont exposés avec provenance et confiance intactes.
 
 **144. Le MCP expose-t-il les evidence ?**
 Décidé — oui, c'est nécessaire pour que le principe evidence-first soit utilisable par un agent, pas seulement par un humain lisant le rapport.
@@ -563,13 +565,13 @@ Décidé. Toute primitive MCP est paginée/bornée par défaut (limite de résul
 Décidé — tous, au MVP. Aucune primitive MCP ne doit modifier le code, la configuration ou déclencher une action ayant un effet de bord, à l'exception explicite de Q154.
 
 **154. Le MCP doit-il déclencher une nouvelle analyse à la demande ?**
-Proposition — P1, optionnelle et explicitement consentie (pas un comportement par défaut d'une simple requête de lecture), pour ne pas transformer un outil read-only en déclencheur caché de coût LLM/compute.
+Décidé (résolu 2026-09-17). Non. Le MCP reste strictement read-only (Q153). L'analyse est déclenchée par l'agent via le CLI, visiblement et sous permission, avec les règles anti-re-analyse de Q154c/Q154d. Un outil « de lecture » capable de lancer des minutes de LLM serait un coût caché ; une commande shell rend ce coût explicite.
 
 **154b. Existe-t-il un chemin de synthèse finale par un agent (Claude Code ou autre), au-dessus du MCP ?**
 Décidé (résolu 2026-09-14, précisé le même jour à deux reprises : (1) sortie **HTML**, pas `.docx` — le `.docx` mentionné initialement était une private joke sur le nommage de fichier façon "vraiment-final-v2-FINAL.docx", pas une exigence de format ; (2) l'agent ne doit pas se contenter de relayer/reformater les facts MCP, il doit produire **sa propre interprétation**, clairement distinguée du relais factuel — sinon cette feature ne fait qu'un rapport HTML moins bon que la Feature 11/11b). Oui — un **second** chemin de consommation, complémentaire du rapport HTML autonome (Q137/Q138/Q140b), pas un remplacement : un agent MCP-compatible (Claude Code, ou tout autre) se connecte au serveur MCP déjà livré (Feature 12, read-only, Q141-153) pour interroger facts/insights/evidence, puis produit **lui-même** une synthèse en **HTML autonome**, lisible directement dans un navigateur, sans build ni serveur, reprenant les mêmes conventions visuelles (badges provenance/confiance, liens vers l'evidence) que le rapport principal (Feature 11/11b) pour le matériel relayé, et **ajoutant une couche d'interprétation propre à l'agent**, clairement séparée (pas de badge de provenance Atlas dessus, ce n'est pas un fact) — l'agent doit prendre position (ce qui est vraiment risqué, par où commencer), pas seulement reformuler ce que le MCP a renvoyé — cette synthèse est le travail de l'agent au moment de la session, pas un artefact qu'Atlas génère ou stocke. Ce qu'Atlas fournit en plus du serveur MCP existant : une **recette documentée** (une définition d'agent/prompt réutilisable, ex. un subagent Claude Code) qui encode comment interroger le MCP et comment structurer/rendre la synthèse — pas une nouvelle primitive MCP, pas de dépendance Python partagée avec le rendu du rapport principal (l'agent ne parle qu'au MCP, il n'importe pas le code Atlas). Répond au besoin exprimé : le rapport HTML (Feature 11/11b) doit rester lisible en standalone (sinon il impose de toute façon de passer par un agent) ; ce chemin agent est pour qui veut une synthèse ciblée/personnalisée en plus, toujours en HTML exploitable, jamais un format binaire. Implémenté par la nouvelle **Feature 14**.
 
 **154c. L'agent doit-il exiger qu'un `atlas analyze` ait déjà tourné, ou peut-il le lancer lui-même ?**
-Décidé (résolu 2026-09-14, suite à un retour direct : *"je veux pas me farcir le analyze à la main, l'agent doit pouvoir le faire tout seul"*). L'agent (Feature 14) lance lui-même `atlas analyze <repo>` s'il ne trouve pas de facts store existant pour ce repository, avant de démarrer `mcp-serve` et d'interroger le MCP — plus d'étape manuelle. Ce n'est **pas** la primitive MCP envisagée par Q154 (toujours Proposition, non tranchée) : l'agent invoque `atlas analyze` comme un simple appel CLI/subprocess, en dehors du MCP — Feature 12 reste inchangée, read-only, sans nouvel outil "déclenche une analyse". Pas de re-analyse silencieuse si un facts store existe déjà (coût LLM caché à éviter, même logique que Q154) — seulement au premier run ou sur demande explicite. L'agent doit aussi toujours calculer et passer explicitement le même chemin de base de facts aux deux commandes (`analyze` puis `mcp-serve`) plutôt que de compter sur leurs défauts CLI respectifs, qui divergent aujourd'hui (`.atlas-cache/facts.sqlite` pour `analyze`, `.atlas/facts.sqlite` pour le défaut de `mcp-serve`) — bug réel signalé mais pas corrigé ici, contourné côté recette agent. Implémenté par la nouvelle **Feature 14b**, additive sur la Feature 14 déjà livrée.
+Décidé (résolu 2026-09-14, suite à un retour direct : *"je veux pas me farcir le analyze à la main, l'agent doit pouvoir le faire tout seul"*). L'agent (Feature 14) lance lui-même `atlas analyze <repo>` s'il ne trouve pas de facts store existant pour ce repository, avant de démarrer `mcp-serve` et d'interroger le MCP — plus d'étape manuelle. Ce n'est **pas** la primitive MCP envisagée par Q154 (tranchée depuis : non, le MCP reste read-only) : l'agent invoque `atlas analyze` comme un simple appel CLI/subprocess, en dehors du MCP — Feature 12 reste inchangée, read-only, sans nouvel outil "déclenche une analyse". Pas de re-analyse silencieuse si un facts store existe déjà (coût LLM caché à éviter, même logique que Q154) — seulement au premier run ou sur demande explicite. L'agent doit aussi toujours calculer et passer explicitement le même chemin de base de facts aux deux commandes (`analyze` puis `mcp-serve`) plutôt que de compter sur leurs défauts CLI respectifs, qui divergent aujourd'hui (`.atlas-cache/facts.sqlite` pour `analyze`, `.atlas/facts.sqlite` pour le défaut de `mcp-serve`) — bug réel signalé mais pas corrigé ici, contourné côté recette agent (disparu depuis : la Feature 12b a supprimé le chemin par défaut de `mcp-serve`, qui dérive le store de `repo_path` à chaque appel). Implémenté par la nouvelle **Feature 14b**, additive sur la Feature 14 déjà livrée.
 
 **154d. Si le store existant n'a jamais eu de run LLM réel (que du `--no-llm`), l'agent doit-il quand même le réutiliser tel quel ?**
 Décidé (résolu 2026-09-15, suite à un cas réel : une synthèse produite sur simple "run with it" a rapporté architecture/domain/onboarding vides "(--no-llm run)" alors qu'Ollama tournait et répondait pendant toute l'exécution — le store réutilisé n'avait en fait jamais eu de run avec LLM activé, uniquement des runs `--no-llm` issus de dogfooding antérieur). Non — avant de sauter l'analyse au motif qu'un store existe déjà (Q154c), l'agent interroge les facts `stage_run_result` (Feature 06c) des stages LLM (architecture/domain/onboarding), tous runs confondus : si **aucun** n'a jamais été tenté avec un vrai provider (tous les `detail` valent `"not_analyzed: llm_disabled"`, ou aucun fact du tout), l'agent relance `analyze` une fois avec un vrai provider plutôt que de faire confiance à un store qui n'a jamais eu sa chance — ce n'est pas la re-analyse silencieuse et coûteuse que Q154c cherche à éviter, c'est l'analyse qui n'a en réalité jamais eu lieu. En complément, suite à un retour direct (*"ça serait assez chanmé si l'agent détecte Ollama"*) : l'agent résout lui-même un modèle Ollama (`ollama list`, même règle "premier modèle listé" que le prompt interactif déjà existant du CLI, `_pick_ollama_model`) plutôt que de dépendre de `$OLLAMA_MODEL` hérité de son propre environnement — le CLI échoue bruyamment (`click.ClickException`) en mode non-interactif si aucun modèle n'est configuré, donc l'agent doit le résoudre en amont plutôt que de heurter cet échec ou de dégrader silencieusement. Si Ollama n'est pas joignable, l'agent continue en `--no-llm` mais le dit explicitement en tête de sa synthèse, pas noyé dans une note de section. Implémenté par la nouvelle **Feature 14c**, additive sur la Feature 14/14b déjà livrée.
@@ -591,28 +593,28 @@ Complément trouvé dans le même retour, côté relais "Atlas findings" (pas "M
 # N. Performance
 
 **155. Quelle taille de repository doit être supportée ?**
-⚠️ **Ouvert — impact architectural.** Non chiffré dans les documents actuels ; conditionne le choix du store (Q49) et des algorithmes de graph (Q58/Q61). À définir avec le MVP (cf. Q194).
+Décidé (résolu 2026-09-17). Cible de conception du MVP : un repository, ou un sous-dossier de monorepo, de l'ordre de quelques milliers de fichiers source (≈ 5 000) sur un poste développeur — l'ordre de grandeur des projets dogfoodés. Au-delà : analyser un sous-dossier (Q158). C'est un ordre de grandeur et non une limite dure parce qu'aucune mesure systématique n'existe encore ; la durée par stage doit être enregistrée pour l'affiner (`docs/improvement-ideas.md` §6). Conséquences assumées : SQLite et calculs en mémoire suffisent (Q49, Q58, Q161).
 
 **156. Quel temps d'analyse cible ?**
-⚠️ **Ouvert.** Non chiffré ; proposition de principe : les résultats déterministes rapides (Q162) doivent être disponibles en quelques minutes sur un repository de taille moyenne, indépendamment du temps LLM.
+Décidé (résolu 2026-09-17). Cible : la partie déterministe (discovery, git, code_graph, hotspots) en moins de 5 minutes sur la taille de Q155. Les passes LLM ne sont pas bornées en durée totale (elles dépendent du matériel pour un modèle local) mais par appel (timeout 600 s Ollama, 120 s Claude Code), mises en cache (Q102) et relançables isolément (`--only`). Objectif à confirmer par mesure.
 
 **157. Quels analyzers peuvent tourner en parallèle ?**
-Décidé — tous les adapters indépendants entre eux (pas de dépendance de données) tournent en parallèle par défaut ; seules les étapes de calcul/LLM qui consomment la sortie d'un adapter attendent explicitement sa complétion.
+Décidé — tous les adapters indépendants entre eux (pas de dépendance de données) tournent en parallèle par défaut ; seules les étapes de calcul/LLM qui consomment la sortie d'un adapter attendent explicitement sa complétion. **Statut (2026-09-17) : non implémenté** — stages et adapters s'exécutent séquentiellement ; `adapters/runner.py::run_adapters` (pool de threads) existe mais n'est utilisé par aucun stage.
 
 **158. Comment gère-t-on les gros monorepos ?**
-Proposition. Scope explicite obligatoire (Q9) plutôt qu'un scan complet par défaut sur un monorepo ; passage à une graph DB dédiée (cf. Q49) si SQLite devient un goulot mesuré, pas par anticipation.
+Décidé (résolu 2026-09-17). Passer le sous-projet en `PATH` (implémenté, Q114), avec `[scope]` en complément (appliqué aujourd'hui par `discovery` seulement) ; pas de graph DB sans goulot mesuré.
 
 **159. Comment cache-t-on les résultats ?**
-Décidé — même mécanisme que Q102 pour le LLM, étendu aux résultats d'adapters déterministes coûteux : cache clé par (hash des fichiers d'entrée + version d'adapter).
+Décidé — même mécanisme que Q102 pour le LLM, étendu aux résultats d'adapters déterministes coûteux : cache clé par (hash des fichiers d'entrée + version d'adapter). **Statut (2026-09-17) : non implémenté pour les adapters** — seul le cache LLM (Q102) existe ; chaque run relance les outils.
 
 **160. Peut-on analyser uniquement les changements depuis une analyse précédente ?**
-Proposition — P1. Analyse incrémentale basée sur le diff de commit hash par rapport au dernier `run_id` connu, réutilisant le cache (Q159) pour les fichiers inchangés.
+Décidé (résolu 2026-09-17). P1, non implémenté. Méthode retenue : diff par commit hash depuis le dernier run, réutilisation du cache (Q159) pour les fichiers inchangés.
 
 **161. Comment gère-t-on les limites mémoire ?**
-Proposition. Traitement en streaming/par lot au niveau des adapters et du store plutôt que chargement intégral en mémoire, particulièrement pour le parsing Git sur de longs historiques (Q108).
+Décidé (résolu 2026-09-17). Pas de streaming au MVP : chaque adapter charge sa sortie en mémoire, ce qui tient pour la taille cible (Q155). Rouvert sur mesure.
 
 **162. Quels résultats doivent être disponibles rapidement avant le reste ?**
-Proposition. Discovery (section B) et structure de base du repository, car ils ne dépendent d'aucun autre analyzer et donnent une première valeur immédiate à l'utilisateur pendant que le reste tourne.
+Décidé (résolu 2026-09-17). Pas de publication anticipée de résultats partiels : le rapport est généré en fin de pipeline. En revanche chaque stage persiste ses facts dès qu'il se termine et l'affichage live montre sa fin ; un rapport déterministe rapide s'obtient avec `--no-llm`.
 
 ---
 
@@ -625,10 +627,10 @@ Décidé — oui, cohérent avec Q10/Q95/Q123 : aucune donnée ne quitte l'envir
 Décidé — uniquement le contenu explicitement sélectionné pour les passes LLM (Q85/Q87/Q93/Q125), jamais un export brut du repository.
 
 **165. Comment détecte-t-on les secrets avant appel LLM ?**
-Proposition. Passage systématique de tout contenu sélectionné pour le LLM à travers un scanner de secrets déterministe existant (pattern-matching connu, entropie) avant envoi ; tout match bloque l'inclusion de ce contenu plutôt que de le masquer silencieusement sans trace.
+Décidé (résolu 2026-09-17). Un scanner de secrets déterministe existant (patterns connus + entropie, type detect-secrets/gitleaks) sur tout contenu sélectionné, avant tout appel LLM ; un fichier avec correspondance est **exclu** du prompt avec une trace (log `WARNING` + mention dans le `stage_run_result`), jamais masqué silencieusement. **Statut : non implémenté** — priorité P0 avant de recommander un provider distant sur du code client.
 
 **166. Comment anonymise-t-on certaines informations ?**
-Proposition — P1. Non détaillé dans les documents actuels ; à minima, les noms de contributeurs (Q189 Capability Matrix) pourraient être pseudonymisés en option avant envoi au LLM ou dans un rapport destiné à être partagé largement.
+Décidé (résolu 2026-09-17). P2 : pseudonymisation optionnelle des contributeurs. Aujourd'hui Atlas ne collecte aucun nom de contributeur (le churn compte des commits et des lignes), le risque est nul au MVP.
 
 **167. Comment gère-t-on les repositories clients confidentiels ?**
 Décidé (principe) — cf. Q163/Q164 : le mode local-only + désactivation LLM (Q95) doit permettre une analyse complète d'un repository confidentiel sans qu'aucune donnée ne sorte, seule dégradation étant l'absence de synthèse LLM.
@@ -637,7 +639,7 @@ Décidé (principe) — cf. Q163/Q164 : le mode local-only + désactivation LLM 
 Décidé (résolu 2026-09-14). Oui — **Ollama** (`http://localhost:11434` par défaut) avec un modèle **Qwen** installé par l'utilisateur. Le nom exact du modèle est une valeur de configuration runtime, jamais codée en dur (ce qui est installé est un fait sur la machine de l'utilisateur, pas une constante de spec). Implémenté par la **Feature 07b** (`specs/features/07b-ollama-provider.md`), en tant que nouvelle implémentation de l'interface `LLMProvider` déjà livrée par la Feature 07 — additive, sans modifier le contrat ni le défaut déjà shippé de Feature 07 (cf. Q94). Résout Q167 : une fois configuré, la synthèse LLM peut rester entièrement locale, pas seulement désactivée.
 
 **169. Peut-on désactiver certaines catégories d'analyse ?**
-Décidé — oui, chaque catégorie d'analyzer (section B-K) doit être activable/désactivable en configuration indépendamment des autres.
+Décidé — oui, chaque catégorie d'analyzer (section B-K) doit être activable/désactivable en configuration indépendamment des autres. **Statut (2026-09-17) : partiel** — sélection par stage en CLI (`--only <stage>`, répétable), pas encore par fichier de configuration.
 
 **170. Comment journalise-t-on les appels externes ?**
 Décidé (résolu 2026-09-14, étendu le même jour suite à la demande explicite que ça couvre toute l'application, pas seulement le LLM — suite au dogfooding réel de l'outil : `atlas analyze` sur son propre repository et sur un projet plus large a révélé des échecs LLM sans information exploitable). Logging structuré **across the app** : chaque feature qui fait un appel externe/LLM porte son propre logger (`logging.getLogger(__name__)`) et journalise selon la même convention à trois niveaux — voir [`specs/features/README.md`](features/README.md#logging-a-convention-every-feature-follows) pour le détail, applicable rétroactivement aux Features 02, 07, 07b, 08 déjà livrées (addition interne, sans changement d'interface). Niveau par défaut `WARNING` — un échec d'appel externe (adapter ou LLM) est toujours journalisé à ce niveau avec au minimum : composant, cible (nom d'adapter ou `provider_id`/modèle), et le détail de l'erreur sous-jacente (type d'exception, message, ou statut HTTP) — jamais juste `not_analyzed: llm_failed` sans plus de contexte. Pas de contenu brut potentiellement sensible dans les logs (cohérent avec l'exigence de transparence evidence-first appliquée à l'outil lui-même). La **Feature 13** ne fait que configurer (niveau, handler) et afficher ce que chaque composant journalise déjà — elle n'ajoute pas les logs elle-même ; résout aussi Q179 pour le détail niveau DEBUG.
@@ -647,10 +649,10 @@ Décidé (résolu 2026-09-14, étendu le même jour suite à la demande explicit
 # P. UX / CLI
 
 **171. Quelle commande lance l'analyse ?**
-Décidé — `project-intel analyze <scope>`, tel que défini dans le Product Brief section 7.
+Décidé — `project-intel analyze <scope>`, tel que défini dans le Product Brief section 7. **Précision (2026-09-17)** : le nom retenu à l'implémentation est `atlas` — `atlas analyze <path>` (le package Python reste `project-intel`).
 
 **172. Quelle configuration est nécessaire ?**
-Proposition. Un fichier de configuration par `Project` (repositories, scope, analyzers activés, budget LLM, provider) avec des valeurs par défaut permettant de lancer une analyse minimale sans configuration explicite sur un seul repository.
+Décidé (résolu 2026-09-17, implémenté par la Feature 13). `.atlas.toml` optionnel, auto-détecté dans `PATH` ou passé par `--config` : `[[repositories]]`, `[scope]`, `[llm]` (`provider`, `model`, `budget_tokens`), `[hotspot_weights]`. Tout a un défaut, `atlas analyze <path>` suffit. Précédence : fichier < variables d'environnement < flags. Pas d'activation d'analyzers par fichier : la sélection se fait par `--only` (Q169).
 
 **173. Faut-il une configuration explicite ou une auto-discovery maximale ?**
 Décidé — les deux, en couches : auto-discovery maximale par défaut (Q11-20) pour la détection technique, configuration explicite obligatoire uniquement pour ce qui ne peut pas être déduit de façon fiable (scope multi-repository/système, credentials, budget) — cohérent avec Q9.
@@ -668,7 +670,7 @@ Décidé — oui, cas particulier de Q175 (sélection par catégorie d'analyzer,
 Décidé — oui, cas particulier de Q175/Q47 : rejouer la synthèse sur des facts déjà persistés sans re-scanner.
 
 **178. Comment inspecte-t-on les facts ?**
-Proposition. Sous-commande CLI dédiée (ex. `project-intel facts query`) permettant de filtrer/afficher les facts stockés sans passer par le rapport HTML, utile pour le debug (Q179).
+Décidé (résolu 2026-09-17, implémenté). `atlas facts query <path> [--type] [--run-id] [--provenance] [--json]`.
 
 **179. Comment debugge-t-on un adapter ?**
 Décidé (résolu 2026-09-14). Verbosité graduée plutôt qu'un simple flag binaire : `-v`/`--verbose` (niveau `INFO`, cf. Q174) puis `-vv`/`--debug`/`--log-level=DEBUG` (niveau `DEBUG`) — ce dernier affiche la commande exacte invoquée par adapter, sa sortie brute avant normalisation, et le résultat de la normalisation, nécessaire pour diagnostiquer un échec (Q30) ou une sortie inattendue. Un appel LLM échoué (Q170) est journalisé avec le même niveau de détail (provider, modèle, erreur sous-jacente) dès `WARNING`, sans attendre `--debug`, puisque c'est justement l'information manquante identifiée lors du dogfooding réel de l'outil. Implémenté par la **Feature 13**.
@@ -690,7 +692,7 @@ Décidé (résolu 2026-09-14). Oui, mais seulement quand c'est possible sans sur
 Décidé — via le contrat d'adapter (Q24/Q33) : un manifest déclaratif + la commande d'invocation, sans modification du cœur du système.
 
 **182. Comment ajouter un nouveau langage ?**
-Proposition. Ajout d'une entrée dans la table de signatures de détection (Q12/Q13) + déclaration des adapters de complexité/graph compatibles pour ce langage ; pas de changement structurel requis.
+Décidé (résolu 2026-09-17). Ajouter les signatures de frameworks/build dans `discovery/data/signatures.toml`, puis vérifier que tokei, graphify et lizard couvrent le langage ; sinon, un nouvel adapter ou `GraphProvider`. Aucun changement du modèle de facts.
 
 **183. Comment ajouter un nouveau provider de graph ?**
 Décidé — implémentation de l'interface `GraphProvider` (Q53/Q55), sans changement du modèle de Facts.
@@ -702,26 +704,26 @@ Décidé — cas général de Q181.
 Décidé — implémentation d'un `Connector` respectant le même contrat de sortie que les adapters (Q120/Q33).
 
 **186. Comment ajouter une nouvelle métrique ?**
-Proposition. Une métrique est un `Fact` de type `computed` produit par un composant de calcul enregistré dans le pipeline `Calculations` (architecture conceptuelle) ; l'ajout ne nécessite pas de changement du schema de Fact générique.
+Décidé (résolu 2026-09-17, implémenté par convention). Une métrique = une fonction déterministe produisant des facts `computed` d'un nouveau `type`, avec sa dataclass de valeur dans `facts/value_schemas.py` (Q50b), appelée depuis un stage. Pas de registre `Calculations` distinct : le registre de stages suffit.
 
 **187. Comment ajouter une nouvelle vue HTML ?**
-Proposition. Le rapport est structuré en sections indépendantes (Q126) consommant des facts/insights typés ; une nouvelle vue est une nouvelle section consommant des types de facts existants ou nouveaux, sans dépendre du reste du rapport.
+Décidé (résolu 2026-09-17, implémenté par convention). Une section = une fonction `_render_<section>(store, run_id)` dans `html_report/renderer.py` qui ne lit que des facts, avec repli inter-runs et état de gap explicite (Q140c).
 
 **188. Comment ajouter une nouvelle primitive MCP ?**
-Proposition. Chaque primitive MCP est une requête typée et bornée (Q152) sur le store de facts ; l'ajout d'une primitive est l'ajout d'une nouvelle requête, pas un changement du serveur MCP lui-même.
+Décidé (résolu 2026-09-17, implémenté par convention). Une fonction bornée avec `run_id` optionnel dans `mcp_server/queries.py` + son enregistrement `@mcp.tool` dans `mcp_server/server.py`.
 
 **189. Le système doit-il avoir un plugin mechanism ?**
-Proposition — oui, dans la mesure où Q181-188 impliquent déjà des interfaces stables (`Adapter`, `GraphProvider`, `Connector`, `Calculation`) : un mécanisme de plugin formel (découverte + chargement dynamique) est une formalisation de ces interfaces plutôt qu'un système séparé, à prévoir en P1 après validation du MVP avec des extensions "in-tree".
+Décidé (résolu 2026-09-17). Pas de mécanisme de plugin. Les extensions se font in-tree via les contrats existants : `AdapterManifest`, `GraphProvider`, `LLMProvider`, `Stage` + `STAGE_REGISTRY` (liste explicite). Raisons : aucun contributeur externe aujourd'hui, et un chargement dynamique figerait des interfaces qui évoluent encore à chaque feature lettrée.
 
 **190. Quelle API stable doit être fournie aux plugins ?**
-⚠️ **Ouvert.** Dépend de la formalisation de Q189 ; à spécifier une fois les interfaces internes (Q24, Q53, Q120, Q186) stabilisées par l'usage réel dans le MVP plutôt que figées prématurément.
+Décidé (résolu 2026-09-17). Aucune API de plugin n'est garantie. Les interfaces ci-dessus sont stables au sens du regeneration contract des specs (`specs/features/README.md`), pas au sens d'une API publique versionnée. Rouvert uniquement si un plugin externe réel est demandé.
 
 ---
 
 # R. MVP
 
 **191. Quelles capacités sont absolument nécessaires au premier release ?**
-Proposition — toutes les lignes P0 de la Capability Matrix, en particulier : Discovery complète, Code Graph (composants/dépendances/appels/centralité/entrypoints), Hotspots avec score explicable, Code Navigation de base, un socle de Domain Understanding et d'Onboarding Path (seules zones LLM P0), rapport HTML avec les sections correspondantes.
+Décidé (résolu 2026-09-17). Le MVP livré : discovery, analyse Git, code graph, hotspots explicables, trois passes LLM (architecture, domaine, onboarding), rapport HTML autonome, CLI, serveur MCP, agent de synthèse. Écarts assumés par rapport aux lignes P0 de la Capability Matrix : infrastructure, CI/CD, runtime, data, observabilité et tests ne sont que **détectés**, pas analysés.
 
 **192. Quels outils existants devons-nous intégrer en premier ?**
 Décidé — tokei (langage/LOC), Git (historique), graphify (code graph). Dans cet ordre de priorité pour le MVP.
@@ -730,41 +732,41 @@ Décidé — tokei (langage/LOC), Git (historique), graphify (code graph). Dans 
 Décidé. MVP : **Python, TypeScript/JavaScript, Go, Java/Kotlin, Ruby, Rust**. Critère de sélection : couverture tokei native (LOC) + grammaires graphify disponibles. Extensions futures selon demande utilisateur, sans refonte du modèle.
 
 **194. Quelle taille de projet doit être supportée ?**
-⚠️ **Ouvert.** Lié à Q155 ; à définir conjointement.
+Décidé (résolu 2026-09-17). Même cible que Q155.
 
 **195. Le MVP doit-il supporter plusieurs repositories ?**
 Décidé — oui (cf. Q3), même si l'orchestration multi-repository peut rester simple (parallélisation basique, pas d'optimisation avancée) au tout premier release.
 
 **196. Le MVP doit-il supporter l'IaC externe ?**
-Proposition — non au strict MVP (marqué optionnel en section K) ; le modèle doit néanmoins pouvoir représenter un `ExternalSource` IaC non analysé dès le MVP (Q6/Q119), pour ne pas nécessiter de refonte du modèle plus tard.
+Décidé (résolu 2026-09-17). Non : détection par signatures seulement (Q17/Q18). Le type `ExternalSource` existe pour représenter un repository IaC non analysé sans refonte du modèle.
 
 **197. Le MVP doit-il inclure le MCP ?**
-Proposition — oui, sous une forme minimale (primitives read-only de base : lookup, dépendances/dépendants, hotspots) plutôt qu'un P2, car c'est un output primaire du Product Brief (section 5) et non une extension.
+Décidé (résolu 2026-09-17, implémenté). Oui (Features 12/12b/12c/12d) : huit primitives read-only (Q141), serveur global enregistré une fois pour tous les repositories.
 
 **198. Le MVP doit-il inclure le LLM ?**
 Décidé — oui pour les zones P0 marquées LLM-only dans la Capability Matrix (architecture interpretation, domain understanding, onboarding path), mais le pipeline doit rester fonctionnel LLM désactivé (Q95).
 
 **199. Quel niveau de rapport HTML est nécessaire ?**
-Proposition — les sections correspondant aux capacités P0 (Q191) au minimum ; les sections purement P1 (ex. observability, data architecture avancée) peuvent apparaître comme sections "non analysées" plutôt qu'absentes du template.
+Décidé (résolu 2026-09-17). Les sections P0 sont implémentées : executive summary, system map, architecture, code map, hotspots, domain understanding, Git evolution, risks, onboarding path, glossary, evidence. Les sections P1 (runtime, infrastructure, CI/CD, data, observabilité, tests) ne sont **pas** affichées vides : elles arriveront avec leur analyzer. Cela s'écarte de la proposition initiale parce qu'une série de sections vides nuisait à la lisibilité (cf. retours Q140b/Q140f) ; leur absence est documentée comme limite connue (README, *Status*).
 
 **200. Quel résultat démontrerait que le MVP est réellement utile à un senior engineer ?**
-⚠️ **Ouvert.** C'est une question de validation produit, pas de design technique — à répondre empiriquement via la section S (Validation), pas par anticipation dans ce document.
+Décidé (résolu 2026-09-17). Le MVP est jugé utile si, sur un repository qu'il ne connaît pas, un senior engineer : (1) obtient via *Onboarding path* ou `where_to_start` au moins 3 points d'entrée qu'un connaisseur du projet valide comme pertinents ; (2) reconnaît au moins la moitié du top-10 hotspots comme zones réellement délicates ; (3) ne relève aucune affirmation fausse présentée autrement qu'en `hypothesis` ; (4) déclare avoir gagné du temps sur sa première journée. Mesuré avec le protocole Q206 sur le corpus Q207, et lors des premiers usages par des collègues.
 
 ---
 
 # S. Validation
 
 **201. Comment mesurer la qualité du rapport ?**
-Proposition — combinaison de métriques objectives (couverture des sections P0, taux d'evidence manquante) et d'évaluation humaine structurée (cf. Q206), pas une métrique unique.
+Décidé (résolu 2026-09-17). Trois mesures : couverture des sections P0 (contenu ou gap explicite, jamais une section silencieusement vide), taux de réponses LLM rejetées par la validation de citations (Q205), évaluation humaine selon Q206.
 
 **202. Comment mesurer la précision des facts ?**
-Proposition. Échantillonnage manuel de facts `observed`/`computed` vérifiés contre le code source réel, taux d'erreur mesuré par catégorie d'analyzer.
+Décidé (résolu 2026-09-17). Échantillon manuel de 20 facts `observed`/`computed` par stage, vérifiés contre le code source, à chaque changement notable d'un adapter ; taux d'erreur suivi par stage.
 
 **203. Comment mesurer la pertinence des hotspots ?**
-Proposition. Comparaison contre le jugement d'un engineer connaissant réellement le projet (cf. Q206) : les fichiers qu'il désignerait comme "à surveiller" recoupent-ils les hotspots calculés.
+Décidé (résolu 2026-09-17). Précision du top-10 hotspots contre la liste « fichiers à surveiller » d'un engineer de référence (Q206), sans lui montrer le rapport avant.
 
 **204. Comment mesurer la qualité de l'onboarding path ?**
-Proposition — même méthode que Q203, appliquée au parcours recommandé plutôt qu'aux hotspots seuls.
+Décidé (résolu 2026-09-17). Même méthode que Q203 : part des points d'entrée proposés que l'engineer de référence valide, et points d'entrée essentiels qu'il cite et qui manquent.
 
 **205. Comment mesurer les hallucinations ?**
 Décidé (mécanisme, cf. Q104) — taux de citations invalides détectées par le validateur structurel comme métrique directe et automatisable, avant même l'évaluation humaine.
@@ -779,32 +781,41 @@ Décidé (résolu 2026-09-17, suite à un retour direct sur une synthèse réell
 Fix scopé au prompt de la Feature 10 (pas de nouveau champ, `open_questions` reste `list[str]`) : chaque `avoid_initially`/`open_questions` doit être une phrase autonome qui nomme la chose ET pourquoi elle compte (ce qu'elle bloque, ou ce que ça coûterait de l'ignorer) — ex. *"how shifts are validated before saving — unresolved, and central to any change touching `ShiftIn` without risking silently invalid data"* plutôt que la seule question nue. Implémenté par la nouvelle **Feature 10c**, additive sur la Feature 10/10b déjà livrée.
 
 **206. Comment comparer une analyse avec l'expertise d'un engineer connaissant le projet ?**
-Proposition. Protocole d'évaluation : un engineer expérimenté sur le projet note l'accord/désaccord avec les affirmations du rapport section par section, sert de référence pour Q203/Q204.
+Décidé (résolu 2026-09-17). Grille par section du rapport : d'accord / partiellement / faux / non vérifiable, remplie par un engineer ayant au moins plusieurs mois sur le projet ; elle sert de référence pour Q200, Q203 et Q204.
 
 **207. Quels repositories de test utiliser ?**
-⚠️ **Ouvert.** Non spécifié ; recommandation : un mix de repositories open-source connus (architecture documentée publiquement, donc vérifiable) et, une fois disponible, un projet réel avec un engineer de référence pour Q206.
+Décidé (résolu 2026-09-17). Trois niveaux : (1) Atlas lui-même, à chaque changement (dogfooding, déjà en place) ; (2) un projet applicatif réel de taille moyenne avec un engineer de référence (le backend Django déjà utilisé pour les Features 09b/04b) ; (3) un projet open-source plus gros (ggshield, déjà utilisé), complété par un repository TypeScript et un repository Go à l'architecture documentée publiquement pour couvrir d'autres langages du MVP.
 
 **208. Comment construire un benchmark multi-langage ?**
-⚠️ **Ouvert.** Dépend de Q193/Q207 ; à construire après stabilisation du MVP sur les 1-2 langages initiaux plutôt qu'en pré-requis.
+Décidé (résolu 2026-09-17). Pas de benchmark multi-langage formel tant que le corpus Q207 ne couvre pas au moins Python, TypeScript et Go ; le benchmark sera alors la grille Q201–Q206 appliquée par langage.
 
 **209. Quel budget maximal d'analyse ?**
-⚠️ **Ouvert.** Lié à Q101/Q156 ; à chiffrer avec des données réelles d'usage plutôt qu'estimé a priori.
+Décidé (résolu 2026-09-17). Budget par défaut : zéro coût marginal (Ollama local, provider par défaut du CLI). Pour un provider payant, pas de plafond imposé par Atlas au MVP : le cache (Q102) garantit qu'une ré-analyse sans changement ne coûte rien, et la sélection est bornée (Q86). Un plafond chiffré sera fixé à partir des tokens mesurés une fois `llm.budget_tokens` câblé (Q101).
 
 **210. Quel temps maximal acceptable ?**
-⚠️ **Ouvert.** Lié à Q156 ; même remarque.
+Décidé (résolu 2026-09-17). Cf. Q156 : moins de 5 minutes pour la partie déterministe sur la taille cible ; les passes LLM sont bornées par appel, pas en durée totale.
 
 ---
 
-## Synthèse des points ⚠️ nécessitant un arbitrage produit avant implémentation
+## Synthèse : décisions non encore implémentées
 
-- **Q21 / Q192** — liste d'outils MVP par catégorie.
-- **Q86** — budget de contexte LLM par défaut (dépend du provider, Q94).
-- **Q121** — liste des connectors supportés.
-- **Q155 / Q194** — taille de repository/projet cible.
-- **Q156 / Q209 / Q210** — cibles de temps et de budget d'analyse.
-- **Q190** — API stable de plugin (à différer après stabilisation des interfaces internes).
-- **Q193** — langages supportés au MVP (bloquant pour le choix d'outil de graph/complexité).
-- **Q200** — critère de succès MVP (question de validation, pas de conception).
-- **Q207 / Q208** — corpus de test/benchmark.
+Toutes les questions du document sont tranchées (dernière passe : 2026-09-17). Les anciens points ⚠️ (Q21/Q192, Q86, Q121, Q155/Q194, Q156/Q209/Q210, Q190, Q193, Q200, Q207/Q208) ont chacun leur décision dans leur section.
 
-Ces points sont ceux où ce document propose délibérément de ne pas trancher seul : ils engagent soit un choix de coût/budget, soit une décision produit sur le public cible initial.
+Décidé ne signifie pas implémenté. Au 2026-09-17, les décisions suivantes restent à livrer (chacune demandera une spec de feature, cf. `specs/features/README.md`) ; les priorités et pistes de mise en œuvre sont dans [`docs/improvement-ideas.md`](../docs/improvement-ideas.md).
+
+| Décision | Écart constaté | Priorité |
+|---|---|---|
+| Q142 — facts bruts via MCP | Pas de requête générique de facts filtrée par type (Q143 livré par la Feature 12d) | P1 |
+| Q165 / Q125 — scan de secrets avant appel LLM | Non implémenté | P0 |
+| Q205c, Q140f — Features 10c et 11e | Spécifiées, non implémentées | P0 |
+| Q65 / Q101 — poids hotspot et budget tokens configurables | Lus dans `.atlas.toml`, non transmis aux stages | P1 |
+| Q9 / Q158 — scope | Appliqué par `discovery` seulement | P1 |
+| Q108 / Q113 — fenêtre Git, inclusion des merges | Supportés par le code, non exposés | P1 |
+| Q157 — parallélisme | Tout est séquentiel | P1 |
+| Q159 / Q160 — cache d'adapters, analyse incrémentale | Non implémentés | P1 |
+| Q4 / Q3 — système multi-repositories | Repositories analysés séparément, pas de vue système | P1 |
+| Q126 / Q199 — sections runtime, infra, CI/CD, data, observabilité, tests | Détection seulement | P1 |
+| Q140 — commit hash dans le rapport | `run_id` + horodatage seulement | P2 |
+| Q59, Q84, Q89 (call paths), Q90, Q91, Q120/Q121, Q129/Q134/Q135, Q166, Q169 (config) | Différés par décision (P1/P2) | P2 |
+
+Anciennement : « Ces points sont ceux où ce document propose délibérément de ne pas trancher seul ». Ils ont été tranchés à partir des constats d'implémentation et de dogfooding ; les décisions de nature produit (Q155/Q156 cibles de taille et de temps, Q200 critère de succès, Q207 corpus, Q209 budget) sont des engagements de départ à confirmer par la mesure, et doivent être révisées dès qu'une mesure les contredit — ce document reste vivant.

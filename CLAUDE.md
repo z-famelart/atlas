@@ -15,6 +15,9 @@ The repo has two parts: the specs (below) and a Python implementation being buil
 
 ## Commands
 
+Human-facing docs: [README.md](README.md), [docs/getting-started.md](docs/getting-started.md), [docs/architecture.md](docs/architecture.md), [docs/improvement-ideas.md](docs/improvement-ideas.md), [CONTRIBUTING.md](CONTRIBUTING.md). Keep them in sync when a change affects install, CLI flags, MCP tools, or a documented limitation.
+
+
 - Install toolchain (pins Python 3.12 + uv via `.mise.toml`): `mise install`
 - Install dependencies: `uv sync`
 - Run the CLI: `atlas` (or `uv run atlas`)
@@ -24,9 +27,9 @@ The repo has two parts: the specs (below) and a Python implementation being buil
 
 - [specs/Product Brief & Vision.md](specs/Product Brief & Vision.md) — the pitch, problem statement, use cases, core principles, target outputs, conceptual architecture, and target workflow.
 - [specs/Capability Matrix.md](specs/Capability Matrix.md) — a question-by-question matrix (Discovery, Code Graph, Hotspots, Domain Understanding, Runtime, Infrastructure, CI/CD, Data, Tests, Git Evolution, Observability, Documentation, Anomalies/Risks, Onboarding Path) mapping each question to priority (P0/P1/P2), source, whether it's deterministic/existing-tool/internal/LLM-derived, and its evidence type.
-- [specs/Design Questions.md](specs/Design Questions.md) — ~210 open design questions grouped by topic (A–S: scope/mental model, discovery, adapters, normalized facts, graph, hotspots, architecture interpretation, domain understanding, LLM orchestration, Git, infrastructure, HTML report, MCP, performance, security/privacy, UX/CLI, extensibility, MVP, validation) that need to be resolved before implementation begins. Note the filename typo ("Atlaas") — this is the actual filename on disk, not a mistake to silently "fix" without confirming with the user first.
+- [specs/Design Questions.md](specs/Design Questions.md) — ~210 open design questions grouped by topic (A–S: scope/mental model, discovery, adapters, normalized facts, graph, hotspots, architecture interpretation, domain understanding, LLM orchestration, Git, infrastructure, HTML report, MCP, performance, security/privacy, UX/CLI, extensibility, MVP, validation) that need to be resolved before implementation begins. As of 2026-09-17 every question is resolved in Design Decisions.md.
 
-- [specs/Design Decisions.md](specs/Design Decisions.md) — answers to the ~210 design questions above, section by section, each marked Décidé/Proposition/Ouvert; open items still needing a product decision are listed in its closing summary.
+- [specs/Design Decisions.md](specs/Design Decisions.md) — answers to the ~210 design questions above, section by section. All are **Décidé** since 2026-09-17; its closing summary lists decisions not yet implemented.
 - [specs/features/](specs/features/) — one implementation spec per feature, in build order, each scoped strictly to points marked **Décidé** in Design Decisions.md (see [specs/features/README.md](specs/features/README.md) for the ordered list and dependency chain).
 
 The four documents above (Product Brief, Capability Matrix, Design Questions, Design Decisions) are written in French; the `specs/features/` implementation specs are written in English since they sit alongside the (English) codebase.
@@ -60,7 +63,7 @@ The first is fast and catches obvious breakage; the second is a larger, real-wor
 
 ### The globally-installed `atlas` command and MCP server can silently run stale code
 
-`atlas` (and the `atlas mcp-serve` process registered in `~/.claude/mcp.json`, per [Feature 12b](specs/features/12b-global-mcp-server.md)) is installed via `uv tool install`, which by default **copies** the package at install time — merges to `main` after that point are invisible to it until reinstalled. This caused a real incident: several already-merged, already-tested bug fixes (Feature 12c's sort-key fix among them) silently didn't apply to real usage for hours because the installed tool predated the merge. Fixed by installing **editable** instead, so the global command always tracks the repo's current `main`:
+`atlas` (and the `atlas mcp-serve` process registered at user scope via `claude mcp add --scope user atlas -- atlas mcp-serve`, per [Feature 12b](specs/features/12b-global-mcp-server.md)) is installed via `uv tool install`, which by default **copies** the package at install time — merges to `main` after that point are invisible to it until reinstalled. This caused a real incident: several already-merged, already-tested bug fixes (Feature 12c's sort-key fix among them) silently didn't apply to real usage for hours because the installed tool predated the merge. Fixed by installing **editable** instead, so the global command always tracks the repo's current `main`:
 
 ```bash
 uv tool install --reinstall --editable .
