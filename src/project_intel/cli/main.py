@@ -15,8 +15,9 @@ from typing import Any
 import click
 
 from ..discovery.scope import ScopeConfig
-from ..facts.enums import EntityType
-from ..facts.model import EntityRef, Fact
+from ..facts.enums import EntityType, RelationType
+from ..facts.model import Entity, EntityRef, Evidence, Fact
+from ..facts.refs import ConfigRef
 from ..facts.store import SCHEMA_VERSION, FactStore
 from ..hotspots.weights import HotspotWeights
 from ..html_report import generate_report as _generate_report
@@ -163,6 +164,75 @@ def _persist_stage_run_result(ctx: PipelineContext, result: StageRunResult) -> N
         run_id=ctx.run_id,
     )
     ctx.store.insert_facts([fact])
+
+
+# ---------------------------------------------------------------------------
+# Multi-repository System orchestration (Feature 13b)
+# ---------------------------------------------------------------------------
+
+
+def _write_system_facts(project_root: Path, repos_cfg: list[dict[str, Any]], config_path: Path) -> None:
+    """Group [[repositories]] entries by declared `system`; for each with 2+
+    members, write System/Repository entities and `belongs_to` facts (declared
+    membership only — Décidé Q4 rules out inferring *how* repos relate) to a
+    dedicated store, separate from each repository's own facts.sqlite."""
+    by_system: dict[str, list[dict[str, Any]]] = {}
+    for entry in repos_cfg:
+        system_name = entry.get("system")
+        if system_name:
+            by_system.setdefault(system_name, []).append(entry)
+
+    for system_name, members in by_system.items():
+        if len(members) < 2:
+            continue
+
+        db_dir = project_root / ".atlas-cache"
+        db_dir.mkdir(parents=True, exist_ok=True)
+        store = FactStore(db_dir / f"system-{system_name}.sqlite")
+        run_id = str(uuid.uuid4())
+        now = datetime.now(UTC)
+
+        entities = [Entity(type=EntityType.SYSTEM, id=system_name, attributes={})]
+        facts = []
+        for entry in members:
+            repo_id = str(Path(entry["path"]).resolve())
+            repo_name = entry.get("name", Path(repo_id).name)
+            entities.append(
+                Entity(
+                    type=EntityType.REPOSITORY,
+                    id=repo_id,
+                    attributes={"name": repo_name},
+                    repository_id=repo_id,
+                )
+            )
+            facts.append(
+                Fact(
+                    id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"{run_id}:belongs_to:{repo_id}:{system_name}")),
+                    type=RelationType.BELONGS_TO.value,
+                    subject=EntityRef(EntityType.REPOSITORY, repo_id),
+                    predicate=RelationType.BELONGS_TO,
+                    object=EntityRef(EntityType.SYSTEM, system_name),
+                    provenance="observed",
+                    confidence=1.0,
+                    source_analyzer="system_orchestration@1.0",
+                    evidence=(
+                        Evidence(
+                            kind="config",
+                            ref=ConfigRef(repository_id=repo_id, path=str(config_path)),
+                            source_analyzer="system_orchestration@1.0",
+                            retrieved_at=now,
+                        ),
+                    ),
+                    created_at=now,
+                    schema_version=SCHEMA_VERSION,
+                    run_id=run_id,
+                )
+            )
+
+        store.insert_entities(entities)
+        store.insert_facts(facts)
+        store.close()
+        click.echo(f"System '{system_name}': {len(members)} repositories -> {db_dir / f'system-{system_name}.sqlite'}")
 
 
 # ---------------------------------------------------------------------------
@@ -339,6 +409,9 @@ def analyze(
         click.echo(f"Report: {report_path}")
 
         store.close()
+
+    if path is None and repos_cfg and config_path is not None:
+        _write_system_facts(config_path.resolve().parent, repos_cfg, config_path)
 
     raise SystemExit(1 if any_failed else 0)
 
