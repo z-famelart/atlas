@@ -8,12 +8,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from ..adapters.manifest import AdapterContext
+from ..adapters.runner import _run_one
 from ..facts import EntityRef, EntityType, Evidence, Fact, FileRef
 from ..facts.store import SCHEMA_VERSION
 from .doc_enumerator import tag_documents
 from .git_detector import GIT_MANIFEST
 from .scope import ScopeConfig, walk_files
 from .signatures import match_signatures
+from .tokei_adapter import TOKEI_MANIFEST
 
 _RUNNER_NAME = "discovery.runner"
 _RUNNER_VERSION = "1.0.0"
@@ -131,6 +133,11 @@ def run_discovery(
     # 8. Git detection (callable adapter — run directly).
     git_output = GIT_MANIFEST.command(ctx)
     facts.extend(GIT_MANIFEST.normalize(git_output, ctx))
+
+    # 9. Tokei language/LOC detection — via _run_one so a missing binary
+    # degrades to skipped rather than failing discovery outright.
+    tokei_result = _run_one(TOKEI_MANIFEST, ctx)
+    facts.extend(tokei_result.facts)
 
     return DiscoveryResult(
         facts=facts,

@@ -727,7 +727,9 @@ Proposition — toutes les lignes P0 de la Capability Matrix, en particulier : D
 Décidé — tokei (langage/LOC), Git (historique), graphify (code graph). Dans cet ordre de priorité pour le MVP.
 
 **193. Quels langages devons-nous supporter ?**
-Décidé. MVP : **Python, TypeScript/JavaScript, Go, Java/Kotlin, Ruby, Rust**. Critère de sélection : couverture tokei native (LOC) + grammaires graphify disponibles. Extensions futures selon demande utilisateur, sans refonte du modèle.
+Décidé. MVP : **Python, TypeScript/JavaScript, Go, Java/Kotlin, Ruby, Rust, PHP**. Critère de sélection : couverture tokei native (LOC) + grammaires graphify disponibles. Extensions futures selon demande utilisateur, sans refonte du modèle.
+
+**Résolu 2026-09-22** — PHP ajouté : graphify embarque déjà un extracteur PHP complet (grammaire tree-sitter dédiée, gestion des imports) et lizard supporte PHP nativement, donc l'ajouter est un changement de périmètre (une liste d'extensions) plutôt qu'un besoin de nouvel outil. Restait cependant un vrai bug ailleurs : le scope MVP de ce Q193 était par erreur aussi appliqué à la détection de langage (tokei) dans `discovery/tokei_adapter.py`, qui ne devait jamais être limitée à ce périmètre — voir la note sur `code_graph_coverage` ci-dessous. La liste des extensions/langages MVP est désormais centralisée dans `adapters/language_scope.py` (`MVP_LANGUAGES`, `MVP_EXTENSIONS`), consommée par `code_graph/graphify_provider.py` et `hotspots/complexity_adapter.py` — à étendre là, pas par adaptateur, la prochaine fois que ce Q193 change. Un fait `code_graph_coverage` (`code_graph/metrics.py`, provenance `computed`) compare désormais le LOC total par langage (tokei, non filtré) à ce périmètre et signale explicitement, dans la section Code Map du rapport HTML, tout langage hors scope avec un LOC significatif — pour que le prochain langage manquant soit visible plutôt que redécouvert à la main.
 
 **194. Quelle taille de projet doit être supportée ?**
 ⚠️ **Ouvert.** Lié à Q155 ; à définir conjointement.
