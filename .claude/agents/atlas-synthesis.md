@@ -88,26 +88,17 @@ Invoked with a `config_path` and a `system_name` instead of a `repo_path`. `proj
 
 Write a single self-contained HTML file (no external dependencies, no build step). The file has two clearly distinguished sections.
 
+### The CSS and JS are fixed — do not improvise them
+
+This was a real problem: earlier runs invented their own colors and page structure each time (one run even produced a **dark background with low-contrast highlighted text — unreadable**), and dense multi-item findings got written as prose paragraphs instead of lists. Both are now non-negotiable:
+
+- **Copy the `<style>` block and the evidence-panel markup/script from [`examples/atlas-synthesis-example.html`](../../examples/atlas-synthesis-example.html) verbatim.** Do not add, remove, rename, or recolor any rule. Do not add a `prefers-color-scheme` block, a `<meta name="color-scheme">` override, or any inline `style="background:...` that isn't already in the example. **The page is always light-background — never dark, never theme-adaptive.** Every "highlighted" element (badges, chips, `<code>` references, active rows) must keep the example's light-background/dark-text pairing so contrast stays high; never invent a new highlight color.
+- **Reuse the example's page skeleton**: `<header class="page-header">` → `<section class="findings-section">` with its fixed `<h3>` subsection order (Hotspots, Architecture, Domain concepts, Onboarding path, Not-analyzed gaps) → `<section class="my-read-section">` → the evidence panel → the closing `<script>`. Only the content inside each subsection changes between runs; the classes, headings, and section order do not.
+- **No prose walls for dense content, in either section.** Once a paragraph would need to name more than ~3 distinct things (files, sub-projects, risks, steps, gaps), it must become a `<ul>`/`<ol>` with one `<strong>`-led item per thing, not a single run-on paragraph gluing them together with inline highlights. Reserve `<p>` for 1–3 sentences of connective narrative between list items or subsections — never as a container for an enumeration. A name/path mentioned inline in prose (not in a list) still goes in `<code class="ref">...</code>` for consistent contrast, exactly as `<code>` is already used in the example — never a custom-colored `<span>`.
+
 ### Section 1 — "Atlas findings"
 
-Relayed material from MCP calls above. Use these CSS conventions (reused from Feature 11/11b) so a reader who knows the full report recognizes the visual language:
-
-```css
-/* Provenance badge — match Feature 11/11b */
-.prov-badge {
-  color: #fff;
-  border-radius: 3px;
-  padding: 1px 6px;
-  font-size: 0.75rem;
-  white-space: nowrap;
-}
-/* Badge colors by provenance */
-.prov-badge.observed  { background: #2e7d32; }
-.prov-badge.computed  { background: #1565c0; }
-.prov-badge.hypothesis { background: #6a1b9a; }
-```
-
-Facts that have evidence use `data-evidence` attributes on their container:
+Facts that have evidence use `data-evidence` attributes on a `.fact-row` container, exactly as in the example:
 
 ```html
 <div class="fact-row" data-evidence='{"fact_id":"...","source":"...","detail":"..."}' onclick="showEvidence(this)">
@@ -116,20 +107,7 @@ Facts that have evidence use `data-evidence` attributes on their container:
 </div>
 ```
 
-Include a client-side evidence panel (hidden by default, shown on click):
-
-```js
-function showEvidence(el) {
-  const ev = JSON.parse(el.getAttribute('data-evidence'));
-  document.getElementById('evidence-panel').innerHTML =
-    '<strong>fact_id:</strong> ' + ev.fact_id + '<br>' +
-    '<strong>source:</strong> ' + ev.source + '<br>' +
-    '<strong>detail:</strong> ' + (ev.detail || '—');
-  document.getElementById('evidence-panel').hidden = false;
-}
-```
-
-Content to include in "Atlas findings":
+Content to include:
 - If Ollama was not reachable (per the startup sequence's step 2), a prominent notice **at the top of this section**, before the hotspots table — e.g. "Ollama was not reachable when this analysis ran; architecture/domain/onboarding sections were skipped. Install/start Ollama and re-run to get LLM-backed findings." Do not bury this as a per-section gap note.
 - Hotspots table (file, complexity, churn, score)
 - Architecture pattern + confidence, from `get_insights(kind="architecture")` (empty list → state the gap)
@@ -139,9 +117,7 @@ Content to include in "Atlas findings":
 
 ### Section 2 — "My read"
 
-Visually distinct from the findings section: use a different background color (e.g. `#f0f4ff` or `#fff8e1`) and a clear heading such as `<h2>My read</h2>`.
-
-This section carries **no provenance badge** — it is explicitly the agent's own judgment, not an Atlas fact.
+Same `my-read-section` styling as the example (visually distinct, light background, no dark theme). This section carries **no provenance badge** — it is explicitly the agent's own judgment, not an Atlas fact.
 
 The agent must:
 - Actually take a position (e.g. "the real risk here is X, not Y")
@@ -151,8 +127,18 @@ The agent must:
 - If there are `not_analyzed` gaps, handle them by case:
   - **Genuinely unknowable this session** (no analyzer exists for the category at all — Runtime, Infrastructure, CI/CD, Data, Observability, Tests): say so, and say what you would want to know if that signal were available.
   - **Architecture came up "uncatalogued" with no synthesized pattern** (Feature 08's known model-reliability limit): do NOT describe the gap and move on. Open and read the specific files MCP flagged as relevant — from `get_hotspots`, `get_component`, or the hypothesis's own `fact_ids` — and write your own grounded architectural read of those files in this section. The failure mode to avoid explicitly: pointing the reader to the flagged files instead of reading them yourself is not acceptable when you have filesystem access to `repo_path`. Domain understanding gaps are not in this bucket after Feature 09b (that fix addresses them at the source); if a domain gap still occurs despite 09b, apply the same read-the-files principle as a last resort.
+  - When the read covers several distinct sub-projects/areas (a monorepo, several risks, several components), use the list-not-prose rule above: one `<h3>` or `<strong>`-led `<li>` per area, e.g. one bullet per sub-project with its role, not one paragraph enumerating all of them inline.
 
 Do not restate the relayed findings — the reader already saw them. Add judgment.
+
+### Evidence panel behavior (fixed)
+
+The evidence panel (`#evidence-panel`, shown by `showEvidence()`) must:
+- Auto-hide **5 seconds** after it was last shown or last had the mouse over it.
+- Cancel/reset that timer while the mouse is over the panel (`mouseenter`/`mouseleave`), so a reader actively reading it never has it disappear underneath them.
+- Always have a visible **✕ close button** that hides the panel directly (`onclick="document.getElementById('evidence-panel').hidden=true"`, inline, not a call into `showEvidence`'s own function scope) — this must keep working even if the rest of the page's script throws an error elsewhere, since it doesn't depend on any other function being defined. Do not refactor it to call a named function.
+
+Copy the script verbatim from the example (it already implements this); do not hand-roll a different timing/hover mechanism. This applies identically inside the tabbed System-mode shell below — the one shared evidence panel keeps the same 5s auto-dismiss/hover-persist/close-button behavior regardless of which tab is active.
 
 ### Multi-repository / System mode: tabbed shell
 
@@ -188,7 +174,7 @@ function showTab(id) {
 <div id="tab-svc-frontend" class="tab-panel"> ... that member's Section 1 + Section 2 ... </div>
 ```
 
-A single evidence panel (the `showEvidence`/`#evidence-panel` element from above) is shared across all tabs — no need to duplicate it per tab.
+A single evidence panel (the `showEvidence`/`#evidence-panel` element from above) is shared across all tabs — no need to duplicate it per tab. The `.tab-bar`/`.tab-panel` colors above already satisfy the fixed light-background/high-contrast rule (light gray inactive tabs, `#1565c0`/white active tab, matching `.prov-badge.computed`) — do not recolor them either.
 
 ## Output destination
 

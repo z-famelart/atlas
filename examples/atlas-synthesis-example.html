@@ -3,9 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
 <title>Atlas Synthesis — shopcore (example)</title>
 <style>
-  /* Base */
+  /* Base — always light. Never add a prefers-color-scheme/dark block: this page is fixed. */
+  :root { color-scheme: light; }
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     font-family: system-ui, -apple-system, sans-serif;
@@ -83,6 +85,16 @@
   td { padding: 6px 10px; border-bottom: 1px solid #dee2e6; }
   tr:last-child td { border-bottom: none; }
   .num { font-variant-numeric: tabular-nums; text-align: right; }
+
+  /* Inline reference to a file/component/concept mentioned in prose —
+     always this pairing, never a custom-colored span, so contrast stays fixed. */
+  code.ref, .my-read-section code, .path-list code {
+    background: #e9ecef;
+    color: #212529;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.85em;
+  }
 
   /* Evidence panel */
   #evidence-panel {
@@ -178,7 +190,6 @@
     position: relative;
     top: 1px;
   }
-  .path-list code { font-size: 0.85rem; background: #e9ecef; padding: 1px 5px; border-radius: 3px; }
 
   /* Not-analyzed notice */
   .not-analyzed {
@@ -220,6 +231,12 @@
   .my-read-section p { margin-bottom: 12px; color: #1a237e; line-height: 1.75; }
   .my-read-section p:last-child { margin-bottom: 0; }
   .my-read-section strong { color: #283593; }
+  .my-read-section h3 { color: #283593; margin: 16px 0 6px; font-size: 0.95rem; }
+  .my-read-section h3:first-child { margin-top: 0; }
+  /* Enumerations (sub-projects, risks, steps) go here — never folded into a <p>. */
+  .my-read-section ul, .my-read-section ol { margin: 0 0 12px 0; padding-left: 22px; color: #1a237e; }
+  .my-read-section li { margin-bottom: 8px; line-height: 1.65; }
+  .my-read-section li:last-child { margin-bottom: 0; }
 </style>
 </head>
 <body>
@@ -358,35 +375,44 @@
 
     <p>
       The numbers tell a consistent story: <strong>checkout.py is the real problem file</strong>, not payments.
-      A complexity of 42 combined with 18 commits in 90 days means this file is both hard to understand
-      and actively changing — the worst combination for a newcomer. The architecture hypothesis (layered,
-      72% confidence) and the churn data reinforce each other: the "orchestration" layer is doing too
-      much, which explains why it keeps getting touched. I would treat the 72% confidence as sufficient
-      signal — it's consistent with what the domain concepts and workflow suggest.
+      A complexity of 42 combined with 18 commits in 90 days is the worst combination for a newcomer —
+      hard to understand <em>and</em> actively changing. The architecture hypothesis (layered, 72%
+      confidence) and the churn data reinforce each other: the "orchestration" layer is doing too much,
+      which explains why it keeps getting touched.
     </p>
 
-    <p>
-      Atlas's advice to avoid <code>payments/gateway.py</code> early is sound but worth unpacking.
-      The lower hotspot score (0.58) doesn't mean it's simpler — it means it changes less, which for
-      a payment integration is actually reassuring. The risk there is brittleness, not churn. I'd
-      read it once early to understand the integration contract, then leave it alone unless the task
-      specifically touches payments. The <em>real</em> onboarding risk is <code>orders/models.py</code>:
-      a complexity of 31 with 14 recent commits suggests the domain model is still in flux, which
-      means any mental model you build of it today may be partially wrong next sprint.
-    </p>
+    <h3>Per-component read</h3>
+    <ul>
+      <li><strong><code class="ref">checkout.py</code></strong> — the actual risk. Complexity 42 + 18 commits/90d means any mental model of it will be stale fast; start here.</li>
+      <li><strong><code class="ref">orders/models.py</code></strong> — the domain model is still in flux (complexity 31, 14 recent commits), so treat today's understanding of it as provisional, not settled.</li>
+      <li><strong><code class="ref">payments/gateway.py</code></strong> — Atlas's advice to defer this is sound but for a different reason than "it's simple": the low churn (score 0.58) means the risk here is brittleness, not complexity. Read it once for the integration contract, then leave it alone unless a task touches payments.</li>
+    </ul>
 
     <p>
-      The missing refund-flow analysis is a meaningful gap. Given that checkout and orders are both
-      hot, refund paths likely run through the same files — understanding <code>checkout.py</code>
-      thoroughly is probably the fastest way to infer the refund flow even without Atlas having
-      extracted it explicitly. I'd prioritize that read before asking anyone to walk you through the
-      refund path.
+      The missing refund-flow analysis (<code class="ref">find_workflow(query="refund")</code> →
+      <code class="ref">not_analyzed</code>) is a meaningful gap, not a footnote: given checkout and
+      orders are both hot, refund paths almost certainly run through the same files, so a thorough read
+      of <code class="ref">checkout.py</code> is the fastest way to infer the refund flow even without
+      Atlas having extracted it — do that before asking anyone to walk you through it.
     </p>
   </section>
 
 </div>
 
 <script>
+// Auto-dismiss the evidence panel 5s after it was last shown/hovered.
+// The close button (✕) does NOT call into this — it sets hidden=true directly
+// inline in the HTML, so it keeps working even if this script throws.
+var evidencePanel = document.getElementById('evidence-panel');
+var evidenceTimer = null;
+
+function armEvidenceTimer() {
+  clearTimeout(evidenceTimer);
+  evidenceTimer = setTimeout(function() { evidencePanel.hidden = true; }, 5000);
+}
+evidencePanel.addEventListener('mouseenter', function() { clearTimeout(evidenceTimer); });
+evidencePanel.addEventListener('mouseleave', armEvidenceTimer);
+
 function showEvidence(el) {
   // Deactivate all rows
   document.querySelectorAll('.fact-row').forEach(function(r) { r.classList.remove('active'); });
@@ -397,10 +423,11 @@ function showEvidence(el) {
     '<strong>fact_id:</strong> ' + ev.fact_id + '<br>' +
     '<strong>source:</strong> ' + ev.source + '<br>' +
     '<strong>detail:</strong> ' + (ev.detail || '—');
-  document.getElementById('evidence-panel').hidden = false;
+  evidencePanel.hidden = false;
+  armEvidenceTimer();
 
   // Scroll panel into view if needed
-  document.getElementById('evidence-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  evidencePanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 </script>
 </body>
