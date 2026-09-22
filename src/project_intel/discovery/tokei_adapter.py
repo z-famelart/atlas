@@ -9,19 +9,20 @@ from pathlib import Path
 from ..adapters.manifest import AdapterContext, AdapterManifest
 from ..facts import SCHEMA_VERSION, EntityRef, EntityType, Evidence, Fact, FileRef
 
-_MVP_LANGUAGES: frozenset[str] = frozenset(
-    {"Python", "TypeScript", "JavaScript", "Go", "Java", "Kotlin", "Ruby", "Rust"}
-)
-
 
 def _normalize_tokei(raw: str, ctx: AdapterContext) -> list[Fact]:
+    """Emit a language_detected fact per file, for every language tokei finds.
+
+    Deliberately not filtered to the code-graph/complexity MVP scope (Q193) —
+    discovery's job is to see the whole repo. code_graph.metrics.compute_coverage_gap
+    is what compares this against Q193's scope to surface what's excluded, so
+    filtering here would silently defeat that (cf. "never pretend to know").
+    """
     data: dict = json.loads(raw)
     source_analyzer = TOKEI_MANIFEST.source_analyzer_id
     facts: list[Fact] = []
 
     for language, lang_data in data.items():
-        if language not in _MVP_LANGUAGES:
-            continue
         for report in lang_data.get("reports", []):
             abs_path = report["name"]
             try:

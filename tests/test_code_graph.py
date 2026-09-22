@@ -10,6 +10,7 @@ import pytest
 from project_intel.code_graph import (
     aggregate_to_module,
     compute_centrality,
+    compute_coverage_gap,
     detect_communities,
     detect_cycles,
 )
@@ -261,3 +262,64 @@ def test_aggregate_invalid_level() -> None:
     store = FactStore(":memory:")
     with pytest.raises(ValueError, match="level must be"):
         aggregate_to_module([], store, "invalid")
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap (Q193 MVP scope vs. actually-detected languages)
+# ---------------------------------------------------------------------------
+
+
+def _language_fact(path: str, language: str, loc: int) -> Fact:
+    return Fact(
+        id=str(uuid.uuid4()),
+        type="language_detected",
+        subject=EntityRef(EntityType.FILE, path),
+        value={"language": language, "loc": loc, "total_lines": loc},
+        evidence=(_evidence(path),),
+        provenance="observed",
+        confidence=1.0,
+        source_analyzer="tokei@1.0",
+        created_at=_now(),
+        schema_version=SCHEMA_VERSION,
+        run_id=RUN,
+    )
+
+
+def test_coverage_gap_empty_store() -> None:
+    store = FactStore(":memory:")
+    assert compute_coverage_gap(store, REPO, RUN) == []
+
+
+def test_coverage_gap_full_mvp_coverage() -> None:
+    """All LOC in MVP languages → no out-of-scope languages, ratio 1.0."""
+    store = _store_with(_language_fact("a.py", "Python", 100))
+    result = compute_coverage_gap(store, REPO, RUN)
+    assert len(result) == 1
+    assert result[0].value["out_of_scope_languages"] == {}
+    assert result[0].value["coverage_ratio"] == pytest.approx(1.0)
+    assert result[0].provenance == "computed"
+
+
+def test_coverage_gap_reports_excluded_language() -> None:
+    """A language outside Q193 (e.g. Elixir) must surface as an explicit gap,
+    not silently vanish — Product Brief principle 5 (never pretend to know)."""
+    store = _store_with(
+        _language_fact("a.py", "Python", 300),
+        _language_fact("b.ex", "Elixir", 100),
+    )
+    result = compute_coverage_gap(store, REPO, RUN)
+    assert len(result) == 1
+    value = result[0].value
+    assert value["in_scope_loc"] == 300
+    assert value["out_of_scope_loc"] == 100
+    assert value["out_of_scope_languages"] == {"Elixir": 100}
+    assert value["coverage_ratio"] == pytest.approx(0.75)
+    assert result[0].subject == EntityRef(EntityType.REPOSITORY, REPO)
+
+
+def test_coverage_gap_php_now_in_scope() -> None:
+    """PHP is part of the MVP scope now (Q193 extended) — must count as in-scope."""
+    store = _store_with(_language_fact("a.php", "PHP", 50))
+    result = compute_coverage_gap(store, REPO, RUN)
+    assert result[0].value["out_of_scope_languages"] == {}
+    assert result[0].value["in_scope_loc"] == 50

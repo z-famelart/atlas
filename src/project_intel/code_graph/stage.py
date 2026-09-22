@@ -8,7 +8,7 @@ from ..adapters.manifest import AdapterContext
 from ..adapters.runner import _run_one
 from ..cli.types import PipelineContext, Stage, StageRunResult
 from .graphify_provider import GraphifyProvider
-from .metrics import compute_centrality, detect_communities, detect_cycles
+from .metrics import compute_centrality, compute_coverage_gap, detect_communities, detect_cycles
 
 
 class _CodeGraphStage:
@@ -37,7 +37,7 @@ class _CodeGraphStage:
             notes.append(f"graphify: {result.error}")
 
         # 2. Graph metrics — operate on whatever relation facts are now in the store
-        for fn in (compute_centrality, detect_communities, detect_cycles):
+        for fn in (compute_centrality, detect_communities, detect_cycles, compute_coverage_gap):
             try:
                 metric_facts = fn(ctx.store, repo_id, ctx.run_id)
                 facts.extend(metric_facts)

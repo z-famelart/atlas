@@ -463,11 +463,31 @@ def _render_community_graph(
     return svg, omitted
 
 
+def _coverage_note(store: FactStore, run_id: str) -> str:
+    """Surface any LOC excluded from the code graph by language scope (Q193) —
+    otherwise a sparse graph on a PHP/Elixir/etc.-heavy repo looks complete when
+    it silently isn't (never pretend to know)."""
+    facts, _fb = _query_fallback(store, "code_graph_coverage", run_id)
+    if not facts:
+        return ""
+    out_of_scope: dict = (facts[-1].value or {}).get("out_of_scope_languages") or {}
+    if not out_of_scope:
+        return ""
+    breakdown = ", ".join(
+        f"{lang} ({loc:,} LOC)" for lang, loc in sorted(out_of_scope.items(), key=lambda kv: -kv[1])
+    )
+    return f"Not covered by the code graph — outside current analysis scope: {breakdown}."
+
+
 def _render_code_map(store: FactStore, run_id: str) -> str:
     symbols, symbols_fb = _query_fallback(store, "symbol_defined", run_id)
     communities, communities_fb = _query_fallback(store, "community", run_id)
+    coverage_note = _coverage_note(store, run_id)
     if not symbols and not communities:
-        return _section("Code Map", _gap_message(store, run_id, "code_graph", "code-graph"), "code-map")
+        body = _gap_message(store, run_id, "code_graph", "code-graph")
+        if coverage_note:
+            body += _gap_message_html(coverage_note)
+        return _section("Code Map", body, "code-map")
 
     rows = [_fact_row(_symbol_label(f), f) for f in symbols[:30]]
 
@@ -499,6 +519,8 @@ def _render_code_map(store: FactStore, run_id: str) -> str:
         parts.append(f"{n_sym} symbol{'s' if n_sym != 1 else ''} defined.")
     if symbols_fb:
         parts.append(_fallback_note("symbol data", symbols_fb, f"{n_sym} symbol(s) found"))
+    if coverage_note:
+        parts.append(coverage_note)
     prose = _narrative(" ".join(parts)) if parts else ""
 
     body = prose + graph_html + '<div class="fact-list">' + "".join(rows) + "</div>"

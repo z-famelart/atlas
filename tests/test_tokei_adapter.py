@@ -33,10 +33,13 @@ def test_python_file_detected() -> None:
     assert main.value["total_lines"] == 133
 
 
-def test_unsupported_language_not_emitted() -> None:
+def test_all_detected_languages_emitted() -> None:
+    """Discovery reports every language tokei finds, not just the code-graph MVP
+    scope (Q193) — code_graph.metrics.compute_coverage_gap needs the full picture
+    to detect what's outside that scope instead of it being silently dropped here."""
     facts = assert_normalizes(TOKEI_MANIFEST, FIXTURE, _ctx())
     languages = {f.value["language"] for f in facts if f.value}
-    assert "C++" not in languages
+    assert "C++" in languages
 
 
 def test_absolute_path_converted_to_relative() -> None:

@@ -12,9 +12,10 @@ from datetime import UTC, datetime
 
 import networkx as nx
 
+from project_intel.adapters.language_scope import MVP_LANGUAGES
 from project_intel.facts.enums import EntityType, RelationType
 from project_intel.facts.model import EntityRef, Evidence, Fact
-from project_intel.facts.refs import FileRef
+from project_intel.facts.refs import FileRef, ToolOutputRef
 from project_intel.facts.store import SCHEMA_VERSION, FactStore
 
 SOURCE_ANALYZER = "code_graph_metrics@1.0"
@@ -127,6 +128,56 @@ def detect_communities(store: FactStore, repository_id: str, run_id: str) -> lis
             )
         )
     return facts
+
+
+def compute_coverage_gap(store: FactStore, repository_id: str, run_id: str) -> list[Fact]:
+    """Emit one code_graph_coverage fact summarizing how much of the repository's
+    LOC (by language_detected facts) falls outside the Q193 MVP scope that
+    graphify/lizard actually extract — so an unsupported language degrades the
+    report visibly instead of just silently thinning the graph (Product Brief
+    principle 5, "never pretend to know")."""
+    in_scope_loc = 0
+    out_of_scope: dict[str, int] = {}
+    for fact in store.query_facts(type="language_detected"):
+        value = fact.value or {}
+        language: str | None = value.get("language")
+        loc = value.get("loc", 0)
+        if not language:
+            continue
+        if language in MVP_LANGUAGES:
+            in_scope_loc += loc
+        else:
+            out_of_scope[language] = out_of_scope.get(language, 0) + loc
+
+    total_loc = in_scope_loc + sum(out_of_scope.values())
+    if total_loc == 0:
+        return []
+
+    evidence = (
+        Evidence(
+            kind="tool_output",
+            ref=ToolOutputRef(
+                source_analyzer=SOURCE_ANALYZER,
+                raw_ref="aggregated from language_detected facts",
+            ),
+            source_analyzer=SOURCE_ANALYZER,
+            retrieved_at=_now(),
+        ),
+    )
+    return [
+        _make_fact(
+            fact_type="code_graph_coverage",
+            subject=EntityRef(EntityType.REPOSITORY, repository_id),
+            value={
+                "in_scope_loc": in_scope_loc,
+                "out_of_scope_loc": sum(out_of_scope.values()),
+                "out_of_scope_languages": out_of_scope,
+                "coverage_ratio": in_scope_loc / total_loc,
+            },
+            evidence=evidence,
+            run_id=run_id,
+        )
+    ]
 
 
 def detect_cycles(store: FactStore, repository_id: str, run_id: str) -> list[Fact]:
