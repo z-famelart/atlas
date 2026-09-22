@@ -65,6 +65,12 @@ def test_score_values(facts):
     assert scores["src/bar.py"] == pytest.approx(1.0)
 
 
+def test_php_file_scored(facts):
+    """src/qux.php (Q193 extended for PHP) must produce a complexity fact too."""
+    scores = {f.subject.id: f.value["score"] for f in facts}
+    assert scores["src/qux.php"] == pytest.approx(2.0)
+
+
 def test_empty_file_excluded(facts):
     """Files with no functions and avg_cc == 0 must not produce a fact."""
     ids = {f.subject.id for f in facts}
@@ -119,6 +125,19 @@ def test_integration_real_lizard(tmp_path: Path):
     assert facts[0].subject.id == "main.py"
     # main.py has 2 functions: a (cc=2, if branch), b (cc=1) → average ≈ 1.5
     assert facts[0].value["score"] > 1.0
+
+
+def test_integration_php_file_selected(tmp_path: Path):
+    """.php must be in the file-selection scope (Q193 extended), not just normalize."""
+    pytest.importorskip("lizard")
+
+    (tmp_path / "main.php").write_text("<?php\nfunction hello() {\n    return 1;\n}\n")
+
+    manifest = lizard_manifest()
+    raw = manifest.command(_ctx(tmp_path))
+    import json
+    data = json.loads(raw)
+    assert any(entry["filename"] == "main.php" for entry in data)
 
 
 def test_integration_4_of_4_components(tmp_path: Path):

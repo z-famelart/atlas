@@ -6,6 +6,7 @@ import json
 import uuid
 from pathlib import Path
 
+from ..adapters.language_scope import MVP_EXTENSIONS
 from ..adapters.manifest import AdapterContext, AdapterManifest
 from ..facts import SCHEMA_VERSION, EntityRef, EntityType, Evidence, Fact
 from ..facts.refs import FileRef
@@ -15,9 +16,9 @@ _VERSION = "1.0"
 _ANALYZER = f"{_NAME}@{_VERSION}"
 
 
-_MVP_EXTENSIONS: frozenset[str] = frozenset(
-    [".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".java", ".kt", ".rb", ".rs", ".c", ".cpp", ".h"]
-)
+# lizard also handles C/C++ well beyond the Q193 MVP language list — kept as a
+# pre-existing extra on top of the shared scope, not part of Q193 itself.
+_MVP_EXTENSIONS: frozenset[str] = MVP_EXTENSIONS | {".c", ".cpp", ".h"}
 
 _SKIP_DIRS: frozenset[str] = frozenset(
     [".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build",

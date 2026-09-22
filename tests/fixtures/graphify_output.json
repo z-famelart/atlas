@@ -5,6 +5,7 @@
     {"id": "src_foo_py_myclass", "label": "MyClass", "_callable": false, "_callable_class": true, "_origin": "ast", "file_type": "code", "source_file": "src/foo.py", "source_location": "L1"},
     {"id": "src_bar_py_helper", "label": "helper", "_callable": true, "_callable_class": false, "_origin": "ast", "file_type": "code", "source_file": "src/bar.py", "source_location": "L3"},
     {"id": "src_baz_rs_baz_fn", "label": "baz_fn", "_callable": true, "_callable_class": false, "_origin": "ast", "file_type": "code", "source_file": "src/baz.rs", "source_location": "L1"},
+    {"id": "src_qux_php_qux_fn", "label": "qux_fn", "_callable": true, "_callable_class": false, "_origin": "ast", "file_type": "code", "source_file": "src/qux.php", "source_location": "L1"},
     {"id": "docs_readme_txt_nothing", "label": "nothing", "_callable": false, "_callable_class": false, "_origin": "ast", "file_type": "doc", "source_file": "docs/README.txt", "source_location": "L1"},
     {"id": "src_foo_py", "label": "foo.py", "_callable": false, "_callable_class": false, "_origin": "ast", "file_type": "code", "source_file": "src/foo.py", "source_location": "L1"},
     {"id": "src_bar_py", "label": "bar.py", "_callable": false, "_callable_class": false, "_origin": "ast", "file_type": "code", "source_file": "src/bar.py", "source_location": "L1"}
