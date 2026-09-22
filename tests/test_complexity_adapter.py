@@ -66,9 +66,14 @@ def test_score_values(facts):
 
 
 def test_php_file_scored(facts):
-    """src/qux.php (Q193 extended for PHP) must produce a complexity fact too."""
     scores = {f.subject.id: f.value["score"] for f in facts}
     assert scores["src/qux.php"] == pytest.approx(2.0)
+
+
+def test_vue_file_scored(facts):
+    """lizard has a native VueReader — .vue must produce a complexity fact too."""
+    scores = {f.subject.id: f.value["score"] for f in facts}
+    assert scores["src/widget.vue"] == pytest.approx(2.0)
 
 
 def test_empty_file_excluded(facts):
@@ -138,6 +143,22 @@ def test_integration_php_file_selected(tmp_path: Path):
     import json
     data = json.loads(raw)
     assert any(entry["filename"] == "main.php" for entry in data)
+
+
+def test_integration_vue_file_selected(tmp_path: Path):
+    """.vue must be in the file-selection scope too (lizard's native VueReader)."""
+    pytest.importorskip("lizard")
+
+    (tmp_path / "widget.vue").write_text(
+        "<template><div>{{ msg }}</div></template>\n"
+        "<script>\nexport default {\n  methods: {\n    hello() {\n      return 1\n    }\n  }\n}\n</script>\n"
+    )
+
+    manifest = lizard_manifest()
+    raw = manifest.command(_ctx(tmp_path))
+    import json
+    data = json.loads(raw)
+    assert any(entry["filename"] == "widget.vue" for entry in data)
 
 
 def test_integration_4_of_4_components(tmp_path: Path):

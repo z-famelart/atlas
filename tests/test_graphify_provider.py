@@ -133,26 +133,40 @@ def test_all_facts_source_analyzer(facts):
 
 
 # ---------------------------------------------------------------------------
-# Files outside MVP language list are not emitted
+# Scope: trust graphify's own file_type=="code" classification, not an
+# Atlas-side extension whitelist — any language graphify can extract passes
+# through unfiltered; only its own doc/non-code classification excludes a file.
 # ---------------------------------------------------------------------------
 
 
-def test_non_mvp_file_excluded(facts):
-    """docs/README.txt node has file_type=doc — must not appear in symbol_defined."""
+def test_non_code_file_excluded(facts):
+    """docs/README.txt node has file_type=doc (graphify's own docs handling,
+    not extraction) — must not appear in symbol_defined."""
     ids = {f.subject.id for f in facts if f.type == "symbol_defined"}
     assert "docs_readme_txt_nothing" not in ids
 
 
 def test_rust_file_included(facts):
-    """src/baz.rs is in the MVP list — its node must be emitted."""
     ids = {f.subject.id for f in facts if f.type == "symbol_defined"}
     assert "src_baz_rs_baz_fn" in ids
 
 
 def test_php_file_included(facts):
-    """src/qux.php is in the MVP list (Q193 extended for PHP) — must be emitted."""
     ids = {f.subject.id for f in facts if f.type == "symbol_defined"}
     assert "src_qux_php_qux_fn" in ids
+
+
+def test_vue_file_included(facts):
+    """No extension filter left to exclude Vue SFCs — graphify has a real extractor."""
+    ids = {f.subject.id for f in facts if f.type == "symbol_defined"}
+    assert "src_widget_vue_render" in ids
+
+
+def test_terraform_file_included(facts):
+    """graphify classifies .tf as file_type=="code" too (its own extract_terraform) —
+    no reason for Atlas to second-guess that with its own narrower list."""
+    ids = {f.subject.id for f in facts if f.type == "symbol_defined"}
+    assert "infra_main_tf_db" in ids
 
 
 # ---------------------------------------------------------------------------

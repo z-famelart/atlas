@@ -5,9 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 import uuid
-from pathlib import Path
 
-from ..adapters.language_scope import MVP_EXTENSIONS as _MVP_EXTENSIONS
 from ..adapters.manifest import AdapterContext, AdapterManifest
 from ..facts import (
     SCHEMA_VERSION,
@@ -27,10 +25,6 @@ _RELATION_MAP: dict[str, RelationType] = {
     "imports_from": RelationType.IMPORTS,
     "inherits": RelationType.INHERITS_FROM,
 }
-
-
-def _is_mvp_file(path: str) -> bool:
-    return Path(path).suffix in _MVP_EXTENSIONS
 
 
 def _graphify_command(ctx: AdapterContext) -> str:
@@ -59,9 +53,13 @@ class GraphifyProvider:
             command=_graphify_command,
             normalize=self._normalize,
             install_hint="npm install -g graphify  # see graphify docs for install options",
+            # Not an Atlas-curated subset — graphify classifies file_type=="code"
+            # for its whole extractor dispatch table; this list is illustrative
+            # of that table, not a gate (see language_scope.py).
             supported_ecosystems=[
-                "python", "typescript", "javascript", "go",
-                "java", "kotlin", "ruby", "rust", "php",
+                "python", "typescript", "javascript", "go", "java", "kotlin",
+                "ruby", "rust", "php", "vue", "svelte", "astro", "c", "cpp",
+                "csharp", "swift", "scala", "lua", "zig",
             ],
         )
 
@@ -74,15 +72,14 @@ class GraphifyProvider:
 
         facts: list[Fact] = []
 
-        # --- symbol_defined facts (callable nodes in MVP-language files) ---
+        # --- symbol_defined facts (callable nodes in files graphify itself
+        # classifies as code — trust graphify's own scope, don't re-narrow it) ---
         for node in nodes_by_id.values():
             if node.get("file_type") != "code":
                 continue
             if not (node.get("_callable") or node.get("_callable_class")):
                 continue  # skip file-level container nodes
             source_file = node.get("source_file", "")
-            if not _is_mvp_file(source_file):
-                continue
 
             symbol_id = node["id"]
             kind = "class" if node.get("_callable_class") else "function"
@@ -128,8 +125,6 @@ class GraphifyProvider:
             src_file = src_node.get("source_file", "")
             tgt_file = tgt_node.get("source_file", "")
             if not src_file or not tgt_file or src_file == tgt_file:
-                continue
-            if not (_is_mvp_file(src_file) and _is_mvp_file(tgt_file)):
                 continue
 
             edge_key = (src_file, tgt_file, rel_type.value)
