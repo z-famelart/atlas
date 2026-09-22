@@ -86,7 +86,7 @@ Invoked with a `config_path` and a `system_name` instead of a `repo_path`. `proj
 
 ## HTML output shape
 
-Write a single self-contained HTML file (no external dependencies, no build step). The file has two clearly distinguished sections.
+Write a single self-contained HTML file (no external dependencies, no build step). **The file must be a complete standalone document, never a fragment** — start with `<!DOCTYPE html>` and include `<html lang="en">`, a `<head>` with `<meta charset="utf-8">` as its first child (before `<title>` or any other tag) and `<meta name="viewport" content="width=device-width, initial-scale=1">`, and wrap all content in `<body>...</body>`. Without an explicit `<meta charset="utf-8">`, a browser opening the file directly from disk (no HTTP `Content-Type` header to fall back on) guesses the encoding and can mangle non-ASCII characters (accents, em dashes, curly quotes) even though the file itself is valid UTF-8 — this has actually happened, so treat it as a hard requirement, not a nicety. The file has two clearly distinguished sections.
 
 ### Section 1 — "Atlas findings"
 
