@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
+from project_intel.cli.main import _write_system_facts
 from project_intel.facts.enums import EntityType
 from project_intel.facts.model import EntityRef, Evidence, Fact
 from project_intel.facts.refs import FileRef
@@ -298,6 +300,7 @@ def test_create_server() -> None:
         "get_path",
         "where_to_start",
         "get_insights",
+        "get_system",
     }
     assert expected == set(tool_names)
 
@@ -460,3 +463,53 @@ def test_where_to_start_fallback_uses_one_resolved_run_id(store: FactStore) -> N
     result = queries.where_to_start(store)
     run_ids = {r["run_id"] for r in result}
     assert run_ids == {"run-new"}
+
+
+# ---------------------------------------------------------------------------
+# get_system (Feature 12e)
+# ---------------------------------------------------------------------------
+
+
+def test_get_system_returns_membership(tmp_path: Path) -> None:
+    repo_a = tmp_path / "svc-a"
+    repo_b = tmp_path / "svc-b"
+    repo_a.mkdir()
+    repo_b.mkdir()
+    config_path = tmp_path / "project.toml"
+    config_path.write_text("")
+    repos_cfg = [
+        {"path": str(repo_a), "name": "svc-a", "system": "myapp"},
+        {"path": str(repo_b), "name": "svc-b", "system": "myapp"},
+    ]
+    _write_system_facts(tmp_path, repos_cfg, config_path)
+
+    from project_intel.mcp_server.server import _open_system_store
+
+    store = _open_system_store(str(tmp_path), "myapp")
+    assert store is not None
+    result = queries.get_system(store)
+    store.close()
+
+    assert result["system"]["id"] == "myapp"
+    assert len(result["repositories"]) == 2
+    assert {r["id"] for r in result["repositories"]} == {str(repo_a.resolve()), str(repo_b.resolve())}
+    assert len(result["facts"]) == 2
+    assert all(f["provenance"] == "observed" for f in result["facts"])
+
+
+def test_get_system_missing_store(tmp_path: Path) -> None:
+    from project_intel.mcp_server.server import _missing_system, _open_system_store
+
+    assert _open_system_store(str(tmp_path), "nope") is None
+    err = json.loads(_missing_system(str(tmp_path), "nope"))
+    assert err["error"] == "no system store found"
+    assert "system-nope.sqlite" in err["expected_path"]
+
+
+def test_get_system_tool_roundtrip(tmp_path: Path) -> None:
+    """Server tool wraps queries.get_system, returning the missing-store shape when absent."""
+    import asyncio
+
+    server = create_server()
+    out = asyncio.run(server.call_tool("get_system", {"project_root": str(tmp_path), "system_name": "nope"}))
+    assert "no system store found" in json.dumps(out, default=str)

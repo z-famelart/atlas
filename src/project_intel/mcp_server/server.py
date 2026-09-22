@@ -35,6 +35,29 @@ def _missing(repo_path: str) -> str:
     })
 
 
+def _system_db_path(project_root: str, system_name: str) -> Path:
+    return Path(project_root) / ".atlas-cache" / f"system-{system_name}.sqlite"
+
+
+def _open_system_store(project_root: str, system_name: str) -> FactStore | None:
+    """Return an open system FactStore (Feature 13b) or None if it doesn't exist."""
+    p = _system_db_path(project_root, system_name)
+    if not p.exists():
+        return None
+    return FactStore(p)
+
+
+def _missing_system(project_root: str, system_name: str) -> str:
+    return json.dumps({
+        "error": "no system store found",
+        "expected_path": str(_system_db_path(project_root, system_name)),
+        "hint": (
+            f"run `atlas analyze --config <project.toml>` with 2+ [[repositories]] "
+            f'declaring system = "{system_name}" first'
+        ),
+    })
+
+
 def create_server() -> MCPServer:
     """Return a configured global MCPServer (repo_path per call, no fixed db_path)."""
     mcp = MCPServer(name="atlas", description="Atlas project-intelligence MCP server")
@@ -191,6 +214,26 @@ def create_server() -> MCPServer:
             result = queries.get_insights(store, kind, limit, run_id)
         except ValueError as e:
             return json.dumps({"error": str(e)})
+        finally:
+            store.close()
+        return json.dumps(result, default=str)
+
+    @mcp.tool(
+        description=(
+            "System-level membership (Feature 13b): the System entity, its member "
+            "Repository entities (each id is a resolved repo_path, usable directly as "
+            "the repo_path argument to every other tool), and the belongs_to facts "
+            "declaring membership. Provenance is always 'observed' — declared in the "
+            "Project config, never inferred (Q4). Returns a not-analyzed response if "
+            "no system with this name/project_root has been orchestrated yet."
+        )
+    )
+    def get_system(project_root: str, system_name: str) -> str:
+        store = _open_system_store(project_root, system_name)
+        if store is None:
+            return _missing_system(project_root, system_name)
+        try:
+            result = queries.get_system(store)
         finally:
             store.close()
         return json.dumps(result, default=str)

@@ -6,7 +6,7 @@ import dataclasses
 from collections import deque
 from typing import Any
 
-from ..facts.enums import EntityType
+from ..facts.enums import EntityType, RelationType
 from ..facts.model import EntityRef, Fact
 from ..facts.store import FactStore
 
@@ -210,6 +210,33 @@ def where_to_start(
     centrality_dicts = [_fact_to_dict(f) for f in centrality[:5]]
 
     return hotspots + centrality_dicts
+
+
+def get_system(store: FactStore) -> dict[str, Any]:
+    """System entity, member Repository entities, and belongs_to facts from a
+    system store (Feature 13b). Each repository's `id` is its resolved
+    repo_path — usable directly as the `repo_path` argument to every other
+    tool. Empty `repositories`/`facts` means the store holds no membership yet."""
+    facts = list(store.query_facts(type=RelationType.BELONGS_TO.value))
+    system_id = facts[0].object.id if facts and facts[0].object else None
+    system_entity = store.get_entity(EntityRef(EntityType.SYSTEM, system_id)) if system_id else None
+
+    repositories = []
+    for fact in facts:
+        entity = store.get_entity(fact.subject)
+        repositories.append({
+            "id": fact.subject.id,
+            "attributes": entity.attributes if entity else {},
+        })
+
+    return {
+        "system": {
+            "id": system_id,
+            "attributes": system_entity.attributes if system_entity else {},
+        },
+        "repositories": repositories,
+        "facts": [_fact_to_dict(f) for f in facts],
+    }
 
 
 def get_insights(

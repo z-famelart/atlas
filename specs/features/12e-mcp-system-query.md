@@ -6,7 +6,7 @@ Feature 12 (MCP server — tool registration pattern, `_open_store`/`_missing` h
 
 ## Naming note
 
-This is deliberately named `12e`, not `12d`. `12d` (`get_insights` + type-scoped run resolution, closing the P0 gap `docs/improvement-ideas.md` §2.2/§2.3 describes) was already implemented on commit `71482db` — but on branch `claude/kind-hamilton-21c237`, never merged into `main`. `specs/features/README.md` on `main` currently lists it as "Implemented", which is inaccurate for the actual working tree until that branch lands. This feature does not depend on 12d's changes and does not merge that branch; it is written against `main` as it exists today (`queries.py`'s seven existing tools, each still resolving `store.latest_run_id()` untyped). Whoever merges the stray `12d` branch should reconcile this note; this feature reserves `12e` regardless, to avoid a second collision once that merge happens.
+Named `12e`, not `12d`, for historical reasons: `12d` (`get_insights` + type-scoped run resolution) was implemented on commit `71482db` on a separate branch (`claude/kind-hamilton-21c237`) before this feature was written, and was merged into `main` (fast-forward, no conflicts) as part of landing this feature — so by the time this feature is implemented, `12d` is real and current on `main`, not stranded. `12e` still avoids renumbering it after the fact.
 
 ## Goal
 
