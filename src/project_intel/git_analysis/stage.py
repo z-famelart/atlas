@@ -7,8 +7,8 @@ from datetime import UTC, datetime
 from ..adapters.manifest import AdapterContext
 from ..adapters.runner import _run_one
 from ..cli.types import PipelineContext, Stage, StageRunResult
+from .barad_dur import barad_dur_manifest
 from .churn import churn_manifest
-from .cochange import cochange_manifest
 
 
 class _GitStage:
@@ -24,7 +24,7 @@ class _GitStage:
         )
         facts = []
         errors = []
-        for manifest in (churn_manifest(), cochange_manifest()):
+        for manifest in (churn_manifest(), barad_dur_manifest()):
             result = _run_one(manifest, adapter_ctx)
             if result.facts:
                 facts.extend(result.facts)

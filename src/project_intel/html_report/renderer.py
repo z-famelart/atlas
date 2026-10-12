@@ -13,6 +13,7 @@ from typing import Any
 
 from project_intel.facts.model import Fact
 from project_intel.facts.store import FactStore
+from project_intel.facts.value_schemas import git_coupling_value
 
 # ---------------------------------------------------------------------------
 # Shared rendering primitives
@@ -602,17 +603,15 @@ def _not_analyzed_section(title: str, section_id: str) -> str:
 
 def _render_git_evolution(store: FactStore, run_id: str) -> str:
     churn, churn_fb = _query_fallback(store, "git_churn", run_id)
-    cochange, cochange_fb = _query_fallback(store, "git_co_change", run_id)
+    cochange, cochange_fb = _query_fallback(store, "git_coupling", run_id)
     if not churn and not cochange:
         return _section("Git Evolution", _gap_message(store, run_id, "git", "git"), "git-evolution")
 
     top_churn = sorted(churn, key=lambda f: int((f.value or {}).get("commits", 0)), reverse=True)[:20]
     rows = [_fact_row(f"{f.subject.id} ({(f.value or {}).get('commits', '?')} commits)", f) for f in top_churn]
     for f in cochange[:10]:
-        co = (f.value or {}).get("co_occurrences")
-        label = f"Co-change: {f.subject.id} ↔ {f.object.id if f.object else '?'}"
-        if co is not None:
-            label += f" ({co} co-occurrences)"
+        v = git_coupling_value(f)
+        label = f"Co-change: {f.subject.id} ↔ {f.object.id if f.object else '?'} ({v.co_changes} co-changes, {v.coupling_pct:.0f}%)"
         rows.append(_fact_row(label, f))
 
     parts: list[str] = []

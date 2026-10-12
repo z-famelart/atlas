@@ -147,10 +147,10 @@ def test_dependency_cycle_renders_all_members(tmp_path: Path) -> None:
     assert "a.py" in block and "b.py" in block and "c.py" in block
 
 
-def test_git_co_change_shows_co_occurrences(tmp_path: Path) -> None:
+def test_git_coupling_shows_co_changes(tmp_path: Path) -> None:
     s = FactStore(tmp_path / "facts.db")
     s.insert_facts([
-        _make_fact("git_co_change", "src/a.py", {"co_occurrences": 7}, object_id="src/b.py"),
+        _make_fact("git_coupling", "src/a.py", {"co_changes": 7, "coupling_pct": 50.0, "is_test_pair": False, "cross_boundary": False}, object_id="src/b.py"),
     ])
     html = generate_report(s, _RUN, output_dir=tmp_path).read_text()
     block = _block(html, "git-evolution")

@@ -47,15 +47,16 @@ pipeline continues, and the report shows the corresponding section as not analyz
 
 | Tool | Used by stage | What you lose without it | Install |
 |---|---|---|---|
-| `git` | `git` | churn, co-change; hotspots lose their churn component | usually already there |
+| `git` | `git` | churn; hotspots lose their churn component | usually already there |
 | [`tokei`](https://github.com/XAMPPRocky/tokei) | `discovery` | languages and lines of code; hotspots lose their size component | `brew install tokei` or `cargo install tokei` |
 | [`graphify`](https://pypi.org/project/graphifyy/) | `code_graph` | imports/calls/symbols, centrality, communities, cycles; architecture and onboarding get much weaker | `uv tool install graphifyy` (two y's) |
+| [`barad-dur`](https://lab.frogg.it/Edouard_Mangel/barad-dur) | `git` | co-change ratios, file ownership, age and file roles; hotspots then rank lockfiles, docs and deleted files too | `cargo install barad-dur --locked` |
 | [`lizard`](https://github.com/terryyin/lizard) | `hotspots` | — it is a Python dependency of Atlas, installed automatically | — |
 
 Check what is available:
 
 ```bash
-for t in git tokei graphify; do printf "%-9s" $t; command -v $t || echo "MISSING"; done
+for t in git tokei graphify barad-dur; do printf "%-9s" $t; command -v $t || echo "MISSING"; done
 ```
 
 Framework/build/CI/IaC detection (in `discovery`) is signature-based and needs no tool.
@@ -108,7 +109,7 @@ Stages run in this fixed order; each one reads the facts written by the ones bef
 | Stage | Produces | LLM |
 |---|---|---|
 | `discovery` | technologies (frameworks, build, CI, IaC), languages + LOC, Git presence, documents | no |
-| `git` | `git_churn`, `git_co_change` (full history, merge commits excluded; renamed files keep their pre-rename history) | no |
+| `git` | `git_churn` (full history, merge commits excluded; renamed files keep their pre-rename history), plus from Barad-dur `git_coupling` (co-change ratios), `git_ownership`, `file_age`, `file_role` | no |
 | `code_graph` | `symbol_defined`, `imports`, `calls`, `centrality`, `community`, `dependency_cycle` | no |
 | `hotspots` | `hotspot_score` = complexity + size + centrality + churn, each percentile-ranked, with the breakdown | no |
 | `architecture` | `architecture_hypothesis` (pattern from a fixed catalogue, confidence, cited facts) | yes |
@@ -199,6 +200,7 @@ pass `run_id`, and all list results are capped.
 | `get_path(repo_path, component_a, component_b, max_depth=5)` | Shortest dependency path (max depth 10) |
 | `find_workflow(repo_path, query, limit=10)` | Business workflows matching a keyword (max 20) |
 | `get_insights(repo_path, kind, limit=10)` | Architecture hypotheses, business concepts or glossary terms (`kind`: `architecture` \| `concepts` \| `glossary`), with confidence (max 50) |
+| `get_owners(repo_path, path_prefix="", top_n=5)` | Authors ranked by mean blame share under a path (needs `barad-dur`; max 50) |
 
 The server never runs an analysis: if the store is missing it answers with the
 `atlas analyze` command to run.

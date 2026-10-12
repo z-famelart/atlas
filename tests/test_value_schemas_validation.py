@@ -53,7 +53,6 @@ from project_intel.facts.value_schemas import (
     DependencyCycleValue,
     DocumentDetectedValue,
     GitChurnValue,
-    GitCoChangeValue,
     GitRepositoryDetectedValue,
     GlossaryTermValue,
     HotspotScoreValue,
@@ -63,7 +62,7 @@ from project_intel.facts.value_schemas import (
     SymbolDefinedValue,
     TechnologyDetectedValue,
 )
-from project_intel.git_analysis import churn_manifest, cochange_manifest
+from project_intel.git_analysis import churn_manifest
 from project_intel.hotspots.complexity_adapter import lizard_manifest
 from project_intel.hotspots.scorer import compute_hotspots
 from project_intel.onboarding.schema import (
@@ -151,13 +150,6 @@ def test_git_churn_matches_schema():
     assert facts
     for f in facts:
         _assert_keys_match(f, GitChurnValue)
-
-
-def test_git_co_change_matches_schema():
-    facts = assert_normalizes(cochange_manifest(threshold=2), _GIT_FIXTURES / "cochange.txt", _GIT_CTX)
-    assert facts
-    for f in facts:
-        _assert_keys_match(f, GitCoChangeValue)
 
 
 # ---------------------------------------------------------------------------

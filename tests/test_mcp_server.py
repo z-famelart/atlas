@@ -301,6 +301,7 @@ def test_create_server() -> None:
         "where_to_start",
         "get_insights",
         "get_system",
+        "get_owners",
     }
     assert expected == set(tool_names)
 

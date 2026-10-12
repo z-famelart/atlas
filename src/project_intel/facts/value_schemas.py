@@ -55,8 +55,29 @@ class GitChurnValue:
 
 
 @dataclass(frozen=True, slots=True)
-class GitCoChangeValue:
-    co_occurrences: int
+class GitOwnershipValue:
+    top_author: str
+    top_pct: float
+    authors: list[dict[str, Any]]
+
+
+@dataclass(frozen=True, slots=True)
+class FileAgeValue:
+    days_since_modified: int
+    last_modified: str
+
+
+@dataclass(frozen=True, slots=True)
+class FileRoleValue:
+    role: str
+
+
+@dataclass(frozen=True, slots=True)
+class GitCouplingValue:
+    co_changes: int
+    coupling_pct: float
+    is_test_pair: bool
+    cross_boundary: bool
 
 
 # ── Hotspots (Feature 05) ────────────────────────────────────────────────────
@@ -220,8 +241,20 @@ def git_churn_value(fact: Fact) -> GitChurnValue:
     return GitChurnValue(**(fact.value or {}))
 
 
-def git_co_change_value(fact: Fact) -> GitCoChangeValue:
-    return GitCoChangeValue(**(fact.value or {}))
+def git_ownership_value(fact: Fact) -> GitOwnershipValue:
+    return GitOwnershipValue(**(fact.value or {}))
+
+
+def file_age_value(fact: Fact) -> FileAgeValue:
+    return FileAgeValue(**(fact.value or {}))
+
+
+def file_role_value(fact: Fact) -> FileRoleValue:
+    return FileRoleValue(**(fact.value or {}))
+
+
+def git_coupling_value(fact: Fact) -> GitCouplingValue:
+    return GitCouplingValue(**(fact.value or {}))
 
 
 def complexity_value(fact: Fact) -> ComplexityValue:

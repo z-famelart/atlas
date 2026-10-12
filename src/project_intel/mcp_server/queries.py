@@ -239,6 +239,23 @@ def get_system(store: FactStore) -> dict[str, Any]:
     }
 
 
+def get_owners(
+    store: FactStore, path_prefix: str = "", top_n: int = 5, run_id: str | None = None
+) -> list[dict[str, Any]]:
+    """Authors ranked by mean ownership share across files under `path_prefix`. Hard cap: 50."""
+    run_id = _run(store, "git_ownership", run_id)
+    shares: dict[str, float] = {}
+    files = 0
+    for f in store.query_facts(type="git_ownership", run_id=run_id):
+        if not f.subject.id.startswith(path_prefix):
+            continue
+        files += 1
+        for a in (f.value or {}).get("authors", []):
+            shares[a["name"]] = shares.get(a["name"], 0.0) + a["pct"]
+    ranked = sorted(shares.items(), key=lambda kv: -kv[1])[: min(top_n, _CAP_HOTSPOTS)]
+    return [{"author": n, "mean_pct": round(t / files, 1), "files": files} for n, t in ranked]
+
+
 def get_insights(
     store: FactStore, kind: str, limit: int = 10, run_id: str | None = None
 ) -> list[dict[str, Any]]:

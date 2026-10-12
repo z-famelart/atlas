@@ -9,11 +9,10 @@ from pathlib import Path
 import pytest
 
 from project_intel.adapters import AdapterContext, assert_normalizes
-from project_intel.facts import CommitRef, EntityRef, EntityType, RelationType
+from project_intel.facts import CommitRef
 from project_intel.git_analysis import (
     AnalysisWindow,
     churn_manifest,
-    cochange_manifest,
     normalize_churn,
 )
 
@@ -115,52 +114,6 @@ def test_churn_normalize_ignores_window_at_parse_level() -> None:
     manifest = churn_manifest(window=AnalysisWindow(window=timedelta(days=30)))
     facts = assert_normalizes(manifest, FIXTURES / "churn.txt", _CTX)
     assert len(facts) == 3  # same as without window, same input string
-
-
-# ---------------------------------------------------------------------------
-# Co-change — fixture-based
-# ---------------------------------------------------------------------------
-
-
-def test_cochange_basic_facts() -> None:
-    manifest = cochange_manifest(threshold=2)
-    facts = assert_normalizes(manifest, FIXTURES / "cochange.txt", _CTX)
-
-    # foo+bar co-occur twice → emitted; foo+baz once → filtered
-    assert len(facts) == 1
-    f = facts[0]
-    assert f.type == "git_co_change"
-    # pairs emitted in alphabetical order: bar < foo
-    assert f.subject == EntityRef(type=EntityType.FILE, id="src/bar.py")
-    assert f.object == EntityRef(type=EntityType.FILE, id="src/foo.py")
-    assert f.predicate == RelationType.CHANGED_IN
-    assert f.value["co_occurrences"] == 2
-    assert f.provenance == "computed"
-
-
-def test_cochange_threshold_1_includes_single_occurrences() -> None:
-    manifest = cochange_manifest(threshold=1)
-    facts = assert_normalizes(manifest, FIXTURES / "cochange.txt", _CTX)
-    pairs = {(f.subject.id, f.object.id) for f in facts}
-    assert ("src/bar.py", "src/foo.py") in pairs
-    assert ("src/baz.py", "src/foo.py") in pairs
-
-
-def test_cochange_evidence_full_hashes() -> None:
-    manifest = cochange_manifest(threshold=1)
-    facts = assert_normalizes(manifest, FIXTURES / "cochange.txt", _CTX)
-    for fact in facts:
-        for ev in fact.evidence:
-            assert ev.kind == "commit"
-            assert isinstance(ev.ref, CommitRef)
-            assert len(ev.ref.commit_hash) == 40
-
-
-def test_cochange_source_analyzer_format() -> None:
-    manifest = cochange_manifest()
-    facts = assert_normalizes(manifest, FIXTURES / "cochange.txt", _CTX)
-    for fact in facts:
-        assert fact.source_analyzer == "git-cochange@1.0.0"
 
 
 # ---------------------------------------------------------------------------
@@ -295,36 +248,18 @@ def test_churn_paths_unchanged_at_repo_root(subdir_repo: tuple[Path, Path]) -> N
     assert "backend/app.py" in paths, f"expected 'backend/app.py', got {paths}"
 
 
-def test_cochange_paths_rebased_for_subdir(tmp_path: Path) -> None:
-    """git_co_change subject.id/object.id must be repo_path-relative."""
+def test_barad_dur_paths_rebased_for_subdir(tmp_path: Path) -> None:
+    import json
+
+    from project_intel.git_analysis.barad_dur import normalize_barad_dur
+
     env = {**_GIT_ENV, "HOME": str(tmp_path), "PATH": "/usr/bin:/bin"}
-
-    def git(*args: str) -> None:
-        subprocess.run(["git", *args], cwd=tmp_path, env=env, check=True, capture_output=True)
-
-    git("init", "-b", "main")
-    git("config", "user.email", "t@t.com")
-    git("config", "user.name", "Test")
-
+    subprocess.run(["git", "init", "-b", "main"], cwd=tmp_path, env=env, check=True, capture_output=True)
     backend = tmp_path / "backend"
     backend.mkdir()
-
-    for commit_num in range(2):
-        (backend / "a.py").write_text(f"v={commit_num}\n")
-        (backend / "b.py").write_text(f"v={commit_num}\n")
-        git("add", ".")
-        git("commit", "-m", f"commit {commit_num}")
-
-    cmd = ["git", "log", "--name-only", "--no-merges", "--format=%H"]
-    result = subprocess.run(cmd, cwd=backend, capture_output=True, text=True, check=True)
-
-    from project_intel.git_analysis.cochange import normalize_cochange
-
+    raw = json.dumps({"file_hotspots": [
+        {"path": "backend/a.py", "role": "source"},
+        {"path": "frontend/b.ts", "role": "source"},
+    ]})
     ctx = AdapterContext(target_path=backend, run_id="r1", repository_id="repo", timestamp=_TS)
-    facts = normalize_cochange(result.stdout, ctx, threshold=2)
-
-    assert len(facts) == 1
-    f = facts[0]
-    # Paths must be repo_path-relative: "a.py"/"b.py", not "backend/a.py"/"backend/b.py"
-    assert not f.subject.id.startswith("backend/"), f"subject still has prefix: {f.subject.id}"
-    assert not f.object.id.startswith("backend/"), f"object still has prefix: {f.object.id}"
+    assert [f.subject.id for f in normalize_barad_dur(raw, ctx)] == ["a.py"]

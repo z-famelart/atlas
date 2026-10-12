@@ -197,6 +197,26 @@ def create_server() -> MCPServer:
 
     @mcp.tool(
         description=(
+            "Who owns the code under path_prefix (default: whole repo): authors ranked by mean "
+            "blame share across files, from git_ownership facts (needs the optional barad-dur "
+            "adapter; an empty list means it did not run). top_n capped at 50. Per-file ownership "
+            "and age are also in get_component."
+        )
+    )
+    def get_owners(
+        repo_path: str, path_prefix: str = "", top_n: int = 5, run_id: str | None = None
+    ) -> str:
+        store = _open_store(repo_path)
+        if store is None:
+            return _missing(repo_path)
+        try:
+            result = queries.get_owners(store, path_prefix, top_n, run_id)
+        finally:
+            store.close()
+        return json.dumps(result, default=str)
+
+    @mcp.tool(
+        description=(
             "Repository-level interpretation facts (LLM hypotheses, provenance + confidence "
             "included). kind: 'architecture' (architecture_hypothesis), 'concepts' "
             "(business_concept) or 'glossary' (glossary_term). Highest confidence first; "
