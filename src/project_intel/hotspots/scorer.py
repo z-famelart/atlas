@@ -18,6 +18,7 @@ from ..facts.enums import EntityType
 from ..facts.model import EntityRef, Evidence, Fact
 from ..facts.refs import FileRef
 from ..facts.store import SCHEMA_VERSION, FactStore
+from ..facts.value_schemas import file_role_value
 from .weights import HotspotWeights
 
 _ANALYZER = "hotspot_scorer@1.0"
@@ -97,7 +98,11 @@ def compute_hotspots(
     run_id: str,
     weights: HotspotWeights | None = None,
 ) -> list[Fact]:
-    """Compute hotspot scores for all files that have at least one component fact."""
+    """Compute hotspot scores for all files that have at least one component fact.
+
+    When Barad-dur's `file_role` facts exist, only files it knows with a non-`config` role
+    are scored; without them (tool not installed) nothing is filtered.
+    """
     weights = weights or HotspotWeights()
     now = datetime.now(UTC)
 
@@ -108,7 +113,13 @@ def compute_hotspots(
         "churn": _collect_churn(store),
     }
 
-    # Union of all files that appear in any component
+    roles = {f.subject.id: file_role_value(f).role for f in store.query_facts(type="file_role")}
+    if roles:
+        raw = {
+            name: {p: v for p, v in values.items() if roles.get(p, "config") != "config"}
+            for name, values in raw.items()
+        }
+
     all_files = sorted({path for component in raw.values() for path in component})
     if not all_files:
         return []

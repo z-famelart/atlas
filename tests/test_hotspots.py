@@ -183,3 +183,13 @@ def test_all_zero_weights_still_produces_score(store: FactStore):
         compute_hotspots(store, _REPO_ID, _RUN_ID, weights=weights)
     except ZeroDivisionError:
         pytest.fail("ZeroDivisionError when all weights are zero")
+
+
+def test_barad_dur_roles_filter_hotspots() -> None:
+    store = FactStore(":memory:")
+    for path, role in (("a.vue", "other"), ("pyproject.toml", "config")):
+        _file_fact(store, "file_role", path, {"role": role})
+        _file_fact(store, "git_churn", path, {"commits": 3, "lines_changed": 3})
+    _file_fact(store, "git_churn", "unknown.lock", {"commits": 3, "lines_changed": 3})
+    scored = {f.subject.id for f in compute_hotspots(store, _REPO_ID, _RUN_ID) if f.type == "hotspot_score"}
+    assert scored == {"a.vue"}
