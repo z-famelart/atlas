@@ -33,7 +33,7 @@ flowchart LR
     end
     tools --> pipeline
     pipeline <--> store[(facts.sqlite<br/>append-only facts)]
-    llm{{LLM provider<br/>Ollama / Claude Code / disabled}} <--> a & dom & o
+    llm{{LLM provider<br/>llama.cpp / Ollama / Claude Code / disabled}} <--> a & dom & o
     store --> report[HTML report]
     store --> mcp[atlas mcp-serve] --> agent[Claude Code /<br/>atlas-synthesis agent]
 ```
@@ -156,7 +156,7 @@ budget check → cache lookup → provider call (JSON constrained to the datacla
             → alias resolution → citation validation → (retry once on failure) → cache write
 ```
 
-- **Providers** implement one method. `OllamaProvider` passes a JSON Schema derived from the response dataclass in Ollama's `format` field; `ClaudeCodeProvider` shells out to `claude -p --output-format json`; `DisabledProvider` returns `not_analyzed: llm_disabled`.
+- **Providers** implement one method. `LlamaCppProvider` posts to llama-server's `/v1/chat/completions` with the same JSON Schema as `response_format`; `OllamaProvider` passes a JSON Schema derived from the response dataclass in Ollama's `format` field; `ClaudeCodeProvider` shells out to `claude -p --output-format json`; `DisabledProvider` returns `not_analyzed: llm_disabled`.
 - **Bounded input.** Prompts contain selected facts and, for the domain pass, the content of a capped set of candidate files (top hotspots, then entrypoints, then workflow-named tests — at most 20 files, empty files dropped). The whole repository is never sent.
 - **Short aliases.** Fact UUIDs are replaced by short aliases in the prompt and mapped back afterwards — small models copy `f12` reliably, not a 36-char UUID.
 - **Citations are mandatory.** Every narrative field comes with `fact_ids`; any id that does not exist in the store fails validation. Onboarding additionally drops entries with no citation at all (Feature 10b).

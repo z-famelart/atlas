@@ -422,7 +422,7 @@ def test_schema_description_lists_fields():
 import urllib.error
 import urllib.request as _urllib_request
 
-from project_intel.llm import OllamaProvider
+from project_intel.llm import LlamaCppProvider, OllamaProvider
 from project_intel.llm.providers import suggest_ollama_budget as _suggest
 
 
@@ -674,3 +674,33 @@ def test_suggest_budget_not_called_in_complete(monkeypatch):
 
     provider.complete(_prompt(), _OllamaResult)
     assert show_called[0] is False
+
+
+def test_llama_cpp_provider_ok_response_and_schema(monkeypatch):
+    sent = {}
+
+    def _urlopen(req, *a, **kw):
+        sent.update(json.loads(req.data))
+        content = json.dumps({"name": "hello", "confidence": 0.9, "fact_ids": []})
+        return _make_ollama_http_response({"choices": [{"message": {"content": content}}]})
+
+    provider = LlamaCppProvider(model="m")
+    provider._connectivity_checked = True
+    monkeypatch.setattr(_urllib_request, "urlopen", _urlopen)
+
+    result = provider.complete(_prompt(), _OllamaResult)
+    assert result.status == "ok" and result.value.name == "hello"
+    assert sent["response_format"]["json_schema"]["schema"]["required"] == ["name", "confidence", "fact_ids"]
+    assert provider.provider_id == "llama-cpp:m"
+
+
+def test_llama_cpp_provider_http_error_is_llm_failed(monkeypatch):
+    provider = LlamaCppProvider(model="m")
+    provider._connectivity_checked = True
+
+    def _boom(*a, **kw):
+        raise _make_http_error(400, {})
+
+    monkeypatch.setattr(_urllib_request, "urlopen", _boom)
+    assert provider.complete(_prompt(), _OllamaResult).reason == "llm_failed"
+

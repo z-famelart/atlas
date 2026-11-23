@@ -68,7 +68,8 @@ Everything else is deterministic. Pick one:
 
 | Provider | When | Setup |
 |---|---|---|
-| **Ollama** (default) | Code must stay on your machine, no API key | `brew install ollama`, start it (`ollama serve` or the app), `ollama pull qwen3:14b` |
+| **llama.cpp** (default) | Code must stay on your machine, no API key | `brew install llama.cpp`, then `llama-server -m <model.gguf> -c 32768` (serves on `:8080`; the model and context size are fixed at launch) |
+| **Ollama** | Same, if you still use Ollama | `ollama serve`, `ollama pull qwen3:14b`, `--llm-provider ollama --ollama-model qwen3:14b` |
 | **Claude Code** | Better interpretation quality; content is sent to Anthropic through your Claude Code login | `claude` CLI installed and logged in |
 | **None** | Confidential code with no local model, or fast deterministic-only runs | `--no-llm` |
 
@@ -81,8 +82,9 @@ shows which model produced a claim and which facts it cites, so you can judge.
 ## 2. Analyze a repository
 
 ```bash
-atlas analyze /path/to/repo                               # Ollama, asks which model if on a TTY
-atlas analyze --ollama-model qwen3:14b /path/to/repo      # Ollama, explicit model
+atlas analyze /path/to/repo                               # llama-server on localhost:8080
+atlas analyze --llama-cpp-url http://host:8081 /path/to/repo
+atlas analyze --llm-provider ollama --ollama-model qwen3:14b /path/to/repo
 atlas analyze --llm-provider claude-code /path/to/repo    # Claude Code (Haiku 4.5 by default)
 atlas analyze --no-llm /path/to/repo                      # deterministic stages only
 ```
@@ -319,11 +321,11 @@ include_globs = ["src/*"]                                             # empty = 
 max_depth = 6
 
 [llm]
-provider = "ollama"       # or "claude-code"
-model = "qwen3:14b"       # Ollama model tag
+provider = "llama-cpp"    # or "ollama", "claude-code"
+model = "qwen3:14b"       # Ollama model tag (ignored by llama-cpp)
 ```
 
-Environment variables: `OLLAMA_MODEL`, `OLLAMA_URL` (default `http://localhost:11434`),
+Environment variables: `LLAMA_CPP_URL` (default `http://localhost:8080`), `OLLAMA_MODEL`, `OLLAMA_URL` (default `http://localhost:11434`),
 `CLAUDE_MODEL` (default `claude-haiku-4-5-20251001`).
 
 Current limitations, stated plainly:
@@ -353,7 +355,7 @@ restart it — `/mcp` → reconnect in Claude Code, or just start a new session.
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `No Ollama model configured` | Non-interactive run with no model | `--ollama-model <tag>`, `OLLAMA_MODEL=…`, `[llm] model`, or `--no-llm` |
-| `not_analyzed: llm_failed` | Ollama not running, model not pulled, timeout, or the model returned invalid/uncited JSON | `ollama list`; re-run that stage with `-v` (or `-vv` for the raw response); try a larger model or `--llm-provider claude-code` |
+| `not_analyzed: llm_failed` | llama-server/Ollama not running, model not pulled, timeout, or the model returned invalid/uncited JSON | `ollama list`; re-run that stage with `-v` (or `-vv` for the raw response); try a larger model or `--llm-provider claude-code` |
 | Architecture says "uncatalogued" everywhere | Weak model could not name a pattern | Larger model or Claude Code; the agent's *My read* compensates by reading the files |
 | `⊘ code_graph … Binary 'graphify' not found` | graphify missing | `uv tool install graphifyy`, then `atlas analyze --only code_graph --only hotspots …` |
 | No languages / LOC in the report | tokei missing | `brew install tokei`, re-run `--only discovery --only hotspots` |
@@ -368,7 +370,7 @@ restart it — `/mcp` → reconnect in Claude Code, or just start a new session.
 ## Quick reference
 
 ```bash
-atlas analyze --ollama-model qwen3:14b /path/to/repo     # full pipeline, local LLM
+atlas analyze /path/to/repo                              # full pipeline, local LLM (llama-server)
 atlas analyze --no-llm /path/to/repo                     # deterministic only
 atlas analyze --only architecture -v /path/to/repo       # re-run one stage, verbose
 atlas facts query /path/to/repo --type hotspot_score     # inspect facts

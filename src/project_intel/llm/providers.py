@@ -224,6 +224,103 @@ class OllamaProvider:
             return LLMCallResult(status="not_analyzed", reason="llm_failed")
 
 
+def _llama_cpp_get(base_url: str, path: str, timeout: int = 5) -> Any:
+    with urllib.request.urlopen(f"{base_url}{path}", timeout=timeout) as resp:
+        return json.loads(resp.read())
+
+
+def suggest_llama_cpp_budget(base_url: str = "http://localhost:8080") -> int | None:
+    """Return a conservative token budget from llama-server's /props, or None on failure."""
+    try:
+        ctx = _llama_cpp_get(base_url.rstrip("/"), "/props")["default_generation_settings"]["n_ctx"]
+        return max(1, int(ctx) - 2048)  # ponytail: leave 2048 tokens for prompt+output
+    except Exception:  # noqa: BLE001
+        return None
+
+
+class LlamaCppProvider:
+    """HTTP provider for a local llama.cpp `llama-server` (OpenAI-compatible API).
+
+    The loaded model and its context size are fixed at server launch (`-m`, `-c`),
+    so `model` is optional and only labels the request.
+    """
+
+    def __init__(self, model: str | None = None, base_url: str = "http://localhost:8080", timeout: int = 600) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._timeout = timeout
+        self._connectivity_checked = False
+        if not model:  # the cache key must change when a different model is loaded
+            try:
+                model = _llama_cpp_get(self._base_url, "/v1/models")["data"][0]["id"]
+            except Exception:  # noqa: BLE001
+                model = "default"
+        self._model = model
+        self.provider_id = f"llama-cpp:{model}"
+
+    def _check_connectivity(self) -> str | None:
+        if self._connectivity_checked:
+            return None
+        self._connectivity_checked = True
+        try:
+            _llama_cpp_get(self._base_url, "/health")
+            return None
+        except (urllib.error.URLError, OSError):
+            return (
+                f"Could not reach llama-server at {self._base_url} — is it running? "
+                "(llama-server -m <model.gguf> -c <ctx>). Falling back to --no-llm behavior for this run."
+            )
+
+    def complete(self, prompt: StructuredPrompt, schema: type[Any]) -> LLMCallResult[Any]:
+        conn_error = self._check_connectivity()
+        if conn_error:
+            print(conn_error)
+
+        full_prompt = (
+            f"{prompt.instructions}\n\n"
+            f"<content>\n{prompt.content}\n</content>\n\n"
+            f"{_schema_description(schema)}\n"
+            "Respond with only valid JSON, no markdown, no explanation."
+        )
+        body: dict[str, Any] = {
+            "model": self._model,
+            "messages": [{"role": "user", "content": full_prompt}],
+            "stream": False,
+            "temperature": 0,
+        }
+        if dataclasses.is_dataclass(schema):
+            body["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": schema.__name__, "schema": _dataclass_json_schema(schema)},
+            }
+        else:
+            body["response_format"] = {"type": "json_object"}
+        _log.info("llama.cpp call model=%s prompt_chars=%d", self._model, len(full_prompt))
+        raw_text = ""
+        try:
+            req = urllib.request.Request(
+                f"{self._base_url}/v1/chat/completions",
+                data=json.dumps(body).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+                envelope = json.loads(resp.read())
+            raw_text = envelope["choices"][0]["message"]["content"]
+            value = _CONVERTER.structure(json.loads(raw_text), schema)
+            return LLMCallResult(status="ok", value=value)
+        except urllib.error.HTTPError as e:
+            _log.warning("llama.cpp HTTP %s model=%s: %s (prompt may exceed the server's -c context)",
+                         e.code, self._model, e.reason)
+            return LLMCallResult(status="not_analyzed", reason="llm_failed")
+        except (json.JSONDecodeError, cattrs.errors.ClassValidationError) as e:
+            _log.warning("llama.cpp response rejected model=%s schema=%s: %s\nresponse head: %.400s",
+                         self._model, schema.__name__, e, raw_text)
+            return LLMCallResult(status="not_analyzed", reason="llm_failed")
+        except Exception as e:  # noqa: BLE001
+            _log.warning("llama.cpp call failed model=%s: %s: %s", self._model, type(e).__name__, e)
+            return LLMCallResult(status="not_analyzed", reason="llm_failed")
+
+
 class DisabledProvider:
     """No-op provider — always returns not_analyzed: llm_disabled (Décidé Q95).
 

@@ -21,7 +21,7 @@ from ..facts.refs import ConfigRef
 from ..facts.store import SCHEMA_VERSION, FactStore
 from ..hotspots.weights import HotspotWeights
 from ..html_report import generate_report as _generate_report
-from ..llm.providers import ClaudeCodeProvider, DisabledProvider, OllamaProvider
+from ..llm.providers import ClaudeCodeProvider, DisabledProvider, LlamaCppProvider, OllamaProvider
 from .registry import STAGE_REGISTRY
 from .types import PipelineContext, StageRunResult
 
@@ -113,11 +113,12 @@ def _run_stages_rich(
     stages: list[Any], ctx: PipelineContext
 ) -> list[StageRunResult]:
     from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+    from rich.table import Column
 
     results: list[StageRunResult] = []
     with Progress(
         SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
+        TextColumn("[progress.description]{task.description}", table_column=Column(no_wrap=True, overflow="ellipsis")),
         TimeElapsedColumn(),
         transient=False,
     ) as progress:
@@ -272,10 +273,12 @@ def main() -> None:
               help="TOML project config file. Auto-discovers .atlas.toml in PATH if omitted.")
 @click.option("--no-llm", is_flag=True, default=False, help="Disable LLM stages.")
 @click.option("--llm-provider", default=None, show_default=True,
-              type=click.Choice(["ollama", "claude-code"]),
+              type=click.Choice(["llama-cpp", "ollama", "claude-code"]),
               help="LLM backend (overrides config).")
+@click.option("--llama-cpp-url", default="http://localhost:8080", show_default=True, envvar="LLAMA_CPP_URL",
+              help="Base URL of the llama-server (llama.cpp) instance.")
 @click.option("--ollama-model", default=None, envvar="OLLAMA_MODEL",
-              help="Ollama model tag. Also read from $OLLAMA_MODEL.")
+              help="Model tag (Ollama) or optional model label (llama-cpp). Also read from $OLLAMA_MODEL.")
 @click.option("--ollama-url", default="http://localhost:11434", show_default=True, envvar="OLLAMA_URL",
               help="Base URL of the Ollama server.")
 @click.option("--claude-model", default="claude-haiku-4-5-20251001", show_default=True, envvar="CLAUDE_MODEL",
@@ -291,6 +294,7 @@ def analyze(
     config_path: Path | None,
     no_llm: bool,
     llm_provider: str | None,
+    llama_cpp_url: str,
     ollama_model: str | None,
     ollama_url: str,
     claude_model: str,
@@ -300,9 +304,10 @@ def analyze(
 ) -> None:
     """Run all analysis stages against a repository at PATH.
 
-    LLM stages are enabled by default and use a local Ollama server (no API key
-    required). Set OLLAMA_MODEL (e.g. qwen2.5:14b) or pass --ollama-model.
-    Pass --no-llm to skip LLM stages entirely, or --llm-provider=claude-code to
+    LLM stages are enabled by default and use a local llama.cpp server (no API
+    key required): start `llama-server -m <model.gguf> -c <ctx>` and Atlas finds
+    it at --llama-cpp-url. --llm-provider=ollama (needs --ollama-model) is still
+    supported. Pass --no-llm to skip LLM stages entirely, or --llm-provider=claude-code to
     use the local Claude Code CLI instead.
     """
     if debug_flag:
@@ -337,7 +342,7 @@ def analyze(
     # --- LLM config merging (config < env < CLI flags) ---
     llm_cfg = cfg.get("llm", {})
     if llm_provider is None:
-        llm_provider = llm_cfg.get("provider", "ollama")
+        llm_provider = llm_cfg.get("provider", "llama-cpp")
     if ollama_model is None:
         ollama_model = llm_cfg.get("model")
     # ponytail: budget_tokens loaded; stages use BudgetConfig.unlimited() until threaded through ctx
@@ -348,6 +353,8 @@ def analyze(
         llm_provider_obj = DisabledProvider()
     elif llm_provider == "claude-code":
         llm_provider_obj = ClaudeCodeProvider(model=claude_model)
+    elif llm_provider == "llama-cpp":
+        llm_provider_obj = LlamaCppProvider(model=ollama_model, base_url=llama_cpp_url)
     else:
         # ollama
         if not ollama_model:

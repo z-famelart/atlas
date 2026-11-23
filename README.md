@@ -39,11 +39,11 @@ brew install tokei                         # languages + LOC   (or: cargo instal
 uv tool install graphifyy                  # code graph        (PyPI name has two y's)
 
 # 3. (Optional, for the LLM sections) a local model — nothing leaves your machine
-brew install ollama && ollama serve &      # or the desktop app
-ollama pull qwen3:14b
+brew install llama.cpp
+llama-server -m /path/to/model.gguf -c 32768 &
 
 # 4. Analyze a repository
-atlas analyze --ollama-model qwen3:14b /path/to/repo      # or --no-llm
+atlas analyze /path/to/repo      # or --no-llm
 open atlas-report-*.html
 ```
 

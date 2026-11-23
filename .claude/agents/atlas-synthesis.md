@@ -20,8 +20,9 @@ Given a `repo_path`, perform these steps before querying MCP. In System mode, th
 
 2. **Resolve LLM flags for the `analyze` invocation.**
    - If the user explicitly passed `--llm-provider`, `--ollama-model`, and/or `--no-llm`, use exactly those — do not second-guess them, skip to step 3.
-   - Otherwise, check whether Ollama is reachable by running `ollama list`.
-     - If the command succeeds and lists at least one model: pick the **first model listed** — read the command's output, skip the header line, take the first whitespace-separated token of the next line. This mirrors `_pick_ollama_model` in `src/project_intel/cli/main.py` exactly (its non-interactive fallback would pick the same model); never invent a model name or guess a tag that isn't actually installed. Remember this model as `<resolved_model>` — it gets passed as `--ollama-model <resolved_model>` in step 4, explicitly, rather than relying on `$OLLAMA_MODEL` being set in this agent's own environment.
+   - Otherwise, check whether a llama.cpp server is reachable: `curl -sf http://localhost:8080/health`. If it is, pass no model flag — `atlas analyze` uses `llama-cpp` by default, so skip the rest of this step and carry on with no LLM flags. If it is not, fall back to checking Ollama as follows.
+   - Check whether Ollama is reachable by running `ollama list`.
+     - If the command succeeds and lists at least one model: pick the **first model listed** — read the command's output, skip the header line, take the first whitespace-separated token of the next line. This mirrors `_pick_ollama_model` in `src/project_intel/cli/main.py` exactly (its non-interactive fallback would pick the same model); never invent a model name or guess a tag that isn't actually installed. Remember this model as `<resolved_model>` — it gets passed as `--llm-provider ollama --ollama-model <resolved_model>` in step 4, explicitly, rather than relying on `$OLLAMA_MODEL` being set in this agent's own environment.
      - If the command fails, or succeeds but lists no models: Ollama is not reachable/usable. Remember this — the `analyze` run (if any) will use `--no-llm`, and the synthesis output must say so prominently (see the note at the end of this step).
    - **Note this resolution's outcome for later**: whichever branch above was taken, carry it forward — it determines both the flags used in step 4 and, if Ollama was unreachable, the prominent notice required in the "Atlas findings" section (see Provenance rules / HTML output shape below): a note near the *top* of "Atlas findings", not buried in a per-section gap note, stating that Ollama was not reachable, that architecture/domain/onboarding sections were skipped as a result, and that installing/starting Ollama and re-running would produce LLM-backed findings.
 
@@ -37,7 +38,7 @@ Given a `repo_path`, perform these steps before querying MCP. In System mode, th
    ```
    atlas analyze [--llm-provider <provider>] [--ollama-model <model>] [--no-llm] <repo_path>
    ```
-   Use the flags resolved in step 2 (user-supplied flags verbatim; otherwise `--ollama-model <resolved_model>` if Ollama was reachable, or `--no-llm` if not). Wait for the command to finish before continuing.
+   Use the flags resolved in step 2 (user-supplied flags verbatim; otherwise `--llm-provider ollama --ollama-model <resolved_model>` if Ollama was reachable, or `--no-llm` if not). Wait for the command to finish before continuing.
 
    A failed/partial `analyze` run (some stages `not_analyzed`) is not a reason to stop — proceed with whatever facts exist, same as for individual `not_analyzed` MCP results below.
 
