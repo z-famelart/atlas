@@ -38,11 +38,14 @@ uv tool install --editable .               # puts `atlas` on your PATH
 brew install tokei                         # languages + LOC   (or: cargo install tokei)
 uv tool install graphifyy                  # code graph        (PyPI name has two y's)
 
-# 3. (Optional, for the LLM sections) a local model — nothing leaves your machine
+# 3. Wire it into your coding agent and check the tools (claude | agy | gemini | codex)
+atlas setup --harness claude
+
+# 4. (Optional, for the LLM sections) a local model — nothing leaves your machine
 brew install llama.cpp
 llama-server -m /path/to/model.gguf -c 32768 &
 
-# 4. Analyze a repository
+# 5. Analyze a repository
 atlas analyze /path/to/repo      # or --no-llm
 open atlas-report-*.html
 ```

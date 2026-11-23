@@ -18,6 +18,17 @@ behind it, Atlas's MCP server wired into Claude Code, and the `atlas-synthesis` 
 
 ## 1. Install
 
+**Fast path.** After `uv tool install --editable .` (§1.1), one command wires Atlas into your coding agent
+(MCP server, and the synthesis agent for Claude Code) and checks the external tools:
+
+```bash
+atlas setup --harness claude   # or: agy | gemini | codex
+atlas doctor                   # re-check tools and LLM backends any time
+```
+
+It prints the exact `atlas analyze` flag to use with that harness. Only `claude` and `agy` registration was
+tested end to end; for `gemini` and `codex` it falls back to printing the command to run by hand if it fails.
+
 ### 1.1 Atlas itself
 
 Requirements: macOS or Linux, Git, Python 3.12 and [uv](https://docs.astral.sh/uv/).

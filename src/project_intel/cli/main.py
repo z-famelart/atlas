@@ -30,6 +30,7 @@ from ..llm.providers import (
     OpenAICompatProvider,
 )
 from .registry import STAGE_REGISTRY
+from .setup import doctor, setup
 from .types import PipelineContext, StageRunResult
 
 _DEFAULT_SCOPE = ScopeConfig(
@@ -528,6 +529,10 @@ def facts_query(
     else:
         for f in stored_facts:
             click.echo(f"{f.type:<30} {f.subject.type.value:<12} {f.subject.id}")
+
+main.add_command(doctor)
+main.add_command(setup)
+
 
 @main.command("mcp-serve")
 @click.option("--port", default=8765, type=int, help="Port (reserved for future SSE transport).")
