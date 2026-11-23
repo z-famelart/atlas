@@ -30,3 +30,13 @@ def test_setup_claude_installs_recipe_once_and_never_overwrites(monkeypatch, tmp
     dest.write_text("mine")
     assert "left untouched" in runner.invoke(main, ["setup", "--harness", "claude"]).output
     assert dest.read_text() == "mine"
+
+
+def test_doctor_install_runs_installer_for_missing_tool(monkeypatch):
+    ran = []
+    monkeypatch.setattr(setup_mod.shutil, "which",
+                        lambda b: None if b in ("graphify", "brew") else f"/bin/{b}")
+    monkeypatch.setattr(setup_mod.subprocess, "run",
+                        lambda cmd, **kw: ran.append(cmd) or type("R", (), {"returncode": 0})())
+    CliRunner().invoke(main, ["doctor", "--install"])
+    assert ran == [["uv", "tool", "install", "graphifyy"]]

@@ -7,6 +7,11 @@ authors = [
     { name = "Valentin Famelart", email = "famelartv@gmail.com" }
 ]
 requires-python = ">=3.12"
+keywords = ["onboarding", "codebase", "mcp", "static-analysis", "llm"]
+classifiers = [
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Documentation",
+]
 dependencies = [
     "cattrs>=26.2.0",
     "click>=8.5.0",

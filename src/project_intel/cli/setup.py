@@ -39,6 +39,23 @@ def _analyzers() -> list[tuple[str, str, str]]:
     ]
 
 
+def _installer(binary: str) -> list[str] | None:
+    if binary == "tokei":
+        return ["brew", "install", "tokei"] if shutil.which("brew") else ["cargo", "install", "tokei"]
+    return {"graphify": ["uv", "tool", "install", "graphifyy"],
+            "barad-dur": ["cargo", "install", "barad-dur", "--locked"]}.get(binary)
+
+
+def _install(binary: str) -> None:
+    cmd = _installer(binary)
+    if not cmd or not shutil.which(cmd[0]):
+        click.echo(f"    ⊘ cannot auto-install {binary}: `{cmd[0] if cmd else '?'}` not found")
+        return
+    click.echo(f"    $ {' '.join(cmd)}")
+    ok = subprocess.run(cmd, check=False).returncode == 0
+    click.echo(f"    {'✓ installed' if ok else '✗ install failed'} {binary}")
+
+
 def _llama_server_up(url: str = "http://localhost:8080") -> bool:
     try:
         urllib.request.urlopen(f"{url}/health", timeout=1)
@@ -52,13 +69,17 @@ def _line(ok: bool, name: str, detail: str = "") -> None:
 
 
 @click.command()
-def doctor() -> None:
+@click.option("--install", "install_missing", is_flag=True,
+              help="Install the missing analyzers (brew/cargo/uv; cargo builds can take minutes).")
+def doctor(install_missing: bool = False) -> None:
     """Check the external tools and LLM backends Atlas can use."""
     click.echo("Analyzers")
     _line(bool(shutil.which("git")), "git", "" if shutil.which("git") else "required")
     for name, binary, hint in _analyzers():
         found = shutil.which(binary)
         _line(bool(found), name, "" if found else f"missing → {hint}")
+        if not found and install_missing:
+            _install(binary)
     click.echo("LLM backends (any one is enough; none = use --no-llm)")
     backends = [
         ("llama-server", _llama_server_up(), "atlas analyze .  (default)"),
@@ -98,7 +119,8 @@ def _install_recipe(home: Path) -> None:
 @click.command()
 @click.option("--harness", required=True, type=click.Choice(sorted(_HARNESSES)),
               help="The coding agent you use.")
-def setup(harness: str) -> None:
+@click.option("--install-deps", is_flag=True, help="Also install missing analyzers (see `atlas doctor --install`).")
+def setup(harness: str, install_deps: bool) -> None:
     """Wire Atlas into a coding agent: MCP server, synthesis agent, LLM hint."""
     info = _HARNESSES[harness]
     click.echo(f"Setting up Atlas for {harness}")
@@ -108,7 +130,7 @@ def setup(harness: str) -> None:
     else:
         click.echo("  ⊘ synthesis agent: Claude Code only for now — the MCP tools work as is")
     click.echo("")
-    doctor.callback()  # type: ignore[misc]
+    doctor.callback(install_missing=install_deps)  # type: ignore[misc]
     click.echo("")
     flag = f"--llm-provider {info['provider']} " if info["provider"] else "--no-llm "
     click.echo(f"Next: atlas analyze {flag}.")

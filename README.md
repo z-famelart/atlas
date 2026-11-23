@@ -24,38 +24,39 @@ itself where Atlas is thin, and writes a short tailored HTML synthesis
 
 ---
 
-## Quickstart (≈10 minutes)
+## Quickstart
 
-**Prerequisites:** macOS/Linux, Git, [mise](https://mise.jdx.dev/) (or Python 3.12 + [uv](https://docs.astral.sh/uv/)).
+**Prerequisites:** macOS/Linux, Git, [uv](https://docs.astral.sh/uv/).
+
+Pick the coding agent you use and run the one-liner. It installs Atlas, registers its MCP
+server in your agent, and checks (`--install-deps`: installs) the analyzers it orchestrates.
+
+| You use… | Run |
+|---|---|
+| Claude Code | `uv tool install project-intel && atlas setup --harness claude --install-deps` |
+| Antigravity (`agy`) | `uv tool install project-intel && atlas setup --harness agy --install-deps` |
+| Gemini CLI | `uv tool install project-intel && atlas setup --harness gemini --install-deps` |
+| Codex | `uv tool install project-intel && atlas setup --harness codex --install-deps` |
+| No agent (CLI + report only) | `uv tool install project-intel && atlas doctor --install` |
+
+Then, in any repository, with the flag `setup` printed for your agent:
 
 ```bash
-# 1. Get Atlas and install the `atlas` command globally (editable = tracks your checkout)
-git clone git@github.com:z-famelart/atlas.git && cd atlas
-mise install                               # Python 3.12 + uv
-uv tool install --editable .               # puts `atlas` on your PATH
-
-# 2. Install the external analyzers Atlas orchestrates
-brew install tokei                         # languages + LOC   (or: cargo install tokei)
-uv tool install graphifyy                  # code graph        (PyPI name has two y's)
-
-# 3. Wire it into your coding agent and check the tools (claude | agy | gemini | codex)
-atlas setup --harness claude
-
-# 4. (Optional, for the LLM sections) a local model — nothing leaves your machine
-brew install llama.cpp
-llama-server -m /path/to/model.gguf -c 32768 &
-
-# 5. Analyze a repository
-atlas analyze /path/to/repo      # or --no-llm
+atlas analyze --llm-provider agy .     # claude-code | agy | gemini-cli | --no-llm | local llama.cpp (default)
 open atlas-report-*.html
 ```
+
+Any OpenAI-compatible API works too (`--llm-provider openai-compat`, see
+[getting-started §1.3](docs/getting-started.md)). Run `atlas doctor` at any time to see what is
+installed and which LLM backends are reachable.
 
 Missing tools never crash a run: the stage that needs them is reported as skipped,
 with the install command, and the report says the section was not analyzed.
 
-Next steps: **[docs/getting-started.md](docs/getting-started.md)** — full install, every
-CLI option, config file, MCP registration in Claude Code (without the per-tool permission
-prompts), the synthesis agent, troubleshooting.
+**From a checkout (contributors):** `mise install && uv tool install --editable .`, then the same `atlas setup`.
+
+Next steps: **[docs/getting-started.md](docs/getting-started.md)** — every CLI option, config
+file, the permission allow-list, the synthesis agent, troubleshooting.
 
 ---
 
