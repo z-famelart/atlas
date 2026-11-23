@@ -33,11 +33,12 @@ server in your agent, and checks (`--install-deps`: installs) the analyzers it o
 
 | You use… | Run |
 |---|---|
-| Claude Code | `uv tool install project-intel && atlas setup --harness claude --install-deps` |
-| Antigravity (`agy`) | `uv tool install project-intel && atlas setup --harness agy --install-deps` |
-| Gemini CLI | `uv tool install project-intel && atlas setup --harness gemini --install-deps` |
-| Codex | `uv tool install project-intel && atlas setup --harness codex --install-deps` |
-| No agent (CLI + report only) | `uv tool install project-intel && atlas doctor --install` |
+| Whatever is on your PATH (asks if several) | `uv tool install git+ssh://git@github.com/z-famelart/atlas && atlas setup --install-deps` |
+| Claude Code | `uv tool install git+ssh://git@github.com/z-famelart/atlas && atlas setup --harness claude --install-deps` |
+| Antigravity (`agy`) | `uv tool install git+ssh://git@github.com/z-famelart/atlas && atlas setup --harness agy --install-deps` |
+| Gemini CLI | `uv tool install git+ssh://git@github.com/z-famelart/atlas && atlas setup --harness gemini --install-deps` |
+| Codex | `uv tool install git+ssh://git@github.com/z-famelart/atlas && atlas setup --harness codex --install-deps` |
+| No agent (CLI + report only) | `uv tool install git+ssh://git@github.com/z-famelart/atlas && atlas doctor --install` |
 
 Then, in any repository, with the flag `setup` printed for your agent:
 

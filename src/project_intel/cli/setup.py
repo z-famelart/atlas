@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 import urllib.request
 from importlib import resources
 from pathlib import Path
@@ -116,21 +117,45 @@ def _install_recipe(home: Path) -> None:
     click.echo(f"  ✓ synthesis agent installed at {dest}")
 
 
+def _interactive() -> bool:
+    return sys.stdin.isatty()
+
+
+def _pick_harnesses() -> list[str]:
+    found = [h for h, i in _HARNESSES.items() if shutil.which(i["binary"])]
+    if not found:
+        raise click.UsageError(
+            f"No supported agent found on PATH ({', '.join(_HARNESSES)}). "
+            "Install one, or pass --harness explicitly."
+        )
+    if len(found) == 1:
+        click.echo(f"Detected: {found[0]}")
+        return found
+    if not _interactive():
+        raise click.UsageError(f"Several agents found ({', '.join(found)}) — pass --harness.")
+    choice = click.prompt("Several agents found — set up which?",
+                          type=click.Choice([*found, "all"]), default=found[0])
+    return found if choice == "all" else [choice]
+
+
 @click.command()
-@click.option("--harness", required=True, type=click.Choice(sorted(_HARNESSES)),
-              help="The coding agent you use.")
+@click.option("--harness", type=click.Choice(sorted(_HARNESSES)), default=None,
+              help="The coding agent you use. Detected from PATH when omitted (asks if several).")
 @click.option("--install-deps", is_flag=True, help="Also install missing analyzers (see `atlas doctor --install`).")
-def setup(harness: str, install_deps: bool) -> None:
+def setup(harness: str | None, install_deps: bool) -> None:
     """Wire Atlas into a coding agent: MCP server, synthesis agent, LLM hint."""
-    info = _HARNESSES[harness]
-    click.echo(f"Setting up Atlas for {harness}")
-    _register_mcp(harness)
-    if harness == "claude":
-        _install_recipe(Path.home())
-    else:
-        click.echo("  ⊘ synthesis agent: Claude Code only for now — the MCP tools work as is")
+    harnesses = [harness] if harness else _pick_harnesses()
+    for h in harnesses:
+        click.echo(f"Setting up Atlas for {h}")
+        _register_mcp(h)
+        if h == "claude":
+            _install_recipe(Path.home())
+        else:
+            click.echo("  ⊘ synthesis agent: Claude Code only for now — the MCP tools work as is")
     click.echo("")
     doctor.callback(install_missing=install_deps)  # type: ignore[misc]
     click.echo("")
-    flag = f"--llm-provider {info['provider']} " if info["provider"] else "--no-llm "
-    click.echo(f"Next: atlas analyze {flag}.")
+    for h in harnesses:
+        provider = _HARNESSES[h]["provider"]
+        flag = f"--llm-provider {provider} " if provider else "--no-llm "
+        click.echo(f"Next ({h}): atlas analyze {flag}.")

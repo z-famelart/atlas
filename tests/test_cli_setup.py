@@ -40,3 +40,39 @@ def test_doctor_install_runs_installer_for_missing_tool(monkeypatch):
                         lambda cmd, **kw: ran.append(cmd) or type("R", (), {"returncode": 0})())
     CliRunner().invoke(main, ["doctor", "--install"])
     assert ran == [["uv", "tool", "install", "graphifyy"]]
+
+
+def _only(*present):
+    return lambda b: f"/bin/{b}" if b in present else None
+
+
+def test_setup_detects_single_harness(monkeypatch):
+    monkeypatch.setattr(setup_mod.shutil, "which", _only("agy"))
+    monkeypatch.setattr(setup_mod.subprocess, "run",
+                        lambda cmd, **kw: type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})())
+    out = CliRunner().invoke(main, ["setup"]).output
+    assert "Detected: agy" in out and "registered in agy" in out
+    assert "Setting up Atlas for claude" not in out
+
+
+def test_setup_asks_when_several(monkeypatch):
+    monkeypatch.setattr(setup_mod.shutil, "which", _only("agy", "claude"))
+    monkeypatch.setattr(setup_mod.subprocess, "run",
+                        lambda cmd, **kw: type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})())
+    monkeypatch.setattr(setup_mod.Path, "home", lambda: __import__("pathlib").Path("/nonexistent-home"))
+    monkeypatch.setattr(setup_mod, "_install_recipe", lambda home: None)
+    monkeypatch.setattr(setup_mod, "_interactive", lambda: True)
+    out = CliRunner().invoke(main, ["setup"], input="agy\n").output
+    assert "Several agents found" in out and "Setting up Atlas for agy" in out
+    assert "Setting up Atlas for claude" not in out
+
+
+def test_setup_several_without_tty_asks_for_flag(monkeypatch):
+    monkeypatch.setattr(setup_mod.shutil, "which", _only("agy", "claude"))
+    result = CliRunner().invoke(main, ["setup"])
+    assert result.exit_code != 0 and "pass --harness" in result.output
+
+
+def test_setup_none_found(monkeypatch):
+    monkeypatch.setattr(setup_mod.shutil, "which", lambda b: None)
+    assert "No supported agent" in CliRunner().invoke(main, ["setup"]).output
