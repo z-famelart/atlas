@@ -71,6 +71,9 @@ Everything else is deterministic. Pick one:
 | **llama.cpp** (default) | Code must stay on your machine, no API key | `brew install llama.cpp`, then `llama-server -m <model.gguf> -c 32768` (serves on `:8080`; the model and context size are fixed at launch) |
 | **Ollama** | Same, if you still use Ollama | `ollama serve`, `ollama pull qwen3:14b`, `--llm-provider ollama --ollama-model qwen3:14b` |
 | **Claude Code** | Better interpretation quality; content is sent to Anthropic through your Claude Code login | `claude` CLI installed and logged in |
+| **Antigravity (`agy`)** | Content is sent to Google through your `agy` login | `agy` installed and logged in; `--llm-provider agy [--llm-model <name from `agy models`>]` |
+| **Gemini CLI (`gemini`)** | Same, with the older open-source CLI | `--llm-provider gemini-cli` |
+| **Any OpenAI-compatible API** | Gemini API, OpenAI, LM Studio, vLLM… | `export LLM_API_KEY=…`; `--llm-provider openai-compat --llm-url <base URL incl. /v1> --llm-model <name>` (Gemini: `https://generativelanguage.googleapis.com/v1beta/openai`) |
 | **None** | Confidential code with no local model, or fast deterministic-only runs | `--no-llm` |
 
 Quality note: the interpretive sections are only as good as the model. Local 7–14B models
@@ -86,6 +89,9 @@ atlas analyze /path/to/repo                               # llama-server on loca
 atlas analyze --llama-cpp-url http://host:8081 /path/to/repo
 atlas analyze --llm-provider ollama --ollama-model qwen3:14b /path/to/repo
 atlas analyze --llm-provider claude-code /path/to/repo    # Claude Code (Haiku 4.5 by default)
+atlas analyze --llm-provider agy /path/to/repo            # Antigravity CLI (or gemini-cli)
+LLM_API_KEY=… atlas analyze --llm-provider openai-compat \
+  --llm-url https://generativelanguage.googleapis.com/v1beta/openai --llm-model gemini-2.5-flash /path/to/repo
 atlas analyze --no-llm /path/to/repo                      # deterministic stages only
 ```
 
@@ -321,12 +327,13 @@ include_globs = ["src/*"]                                             # empty = 
 max_depth = 6
 
 [llm]
-provider = "llama-cpp"    # or "ollama", "claude-code"
+provider = "llama-cpp"    # or "ollama", "claude-code", "agy", "gemini-cli", "openai-compat"
+url = "https://…/v1"      # openai-compat only; model above is its model name
 model = "qwen3:14b"       # Ollama model tag (ignored by llama-cpp)
 ```
 
 Environment variables: `LLAMA_CPP_URL` (default `http://localhost:8080`), `OLLAMA_MODEL`, `OLLAMA_URL` (default `http://localhost:11434`),
-`CLAUDE_MODEL` (default `claude-haiku-4-5-20251001`).
+`CLAUDE_MODEL` (default `claude-haiku-4-5-20251001`), `LLM_MODEL`, `LLM_URL`, `LLM_API_KEY` (agy, gemini-cli / openai-compat).
 
 Current limitations, stated plainly:
 

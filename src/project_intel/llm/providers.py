@@ -321,6 +321,107 @@ class LlamaCppProvider:
             return LLMCallResult(status="not_analyzed", reason="llm_failed")
 
 
+def _full_prompt(prompt: StructuredPrompt, schema: type[Any]) -> str:
+    return (
+        f"{prompt.instructions}\n\n"
+        f"<content>\n{prompt.content}\n</content>\n\n"
+        f"{_schema_description(schema)}\n"
+        "Respond with only valid JSON, no markdown, no explanation."
+    )
+
+
+def _loads_unfenced(text: str) -> Any:
+    """Hosted models often wrap JSON in ```json fences despite being told not to."""
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else ""
+        text = text.rsplit("```", 1)[0]
+    return json.loads(text)
+
+
+class GeminiCliProvider:
+    """Shells out to a Google agent CLI in headless mode: `agy` (Antigravity) or `gemini` (Gemini CLI).
+
+    Both take the whole prompt as the `-p` argument. `agy` ignores stdin in print mode,
+    so the prompt cannot go through stdin (ceiling: the OS argv limit, ~1 MB on macOS).
+    """
+
+    def __init__(self, model: str | None = None, binary: str = "agy", timeout: int = 180) -> None:
+        self.provider_id = f"{binary}:{model or 'default'}"
+        self._binary = binary
+        self._model = model
+        self._timeout = timeout
+
+    def complete(self, prompt: StructuredPrompt, schema: type[Any]) -> LLMCallResult[Any]:
+        cmd = [self._binary, "-p", _full_prompt(prompt, schema) + "\nDo not use any tools."]
+        if self._model:
+            cmd += ["--model", self._model]
+        try:
+            proc = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=self._timeout, check=False
+            )
+            if proc.returncode != 0:
+                _log.warning("%s exited %s: %.400s", self._binary, proc.returncode, proc.stderr)
+                return LLMCallResult(status="not_analyzed", reason="llm_failed")
+            value = _CONVERTER.structure(_loads_unfenced(proc.stdout), schema)
+            return LLMCallResult(status="ok", value=value)
+        except Exception as e:  # noqa: BLE001
+            _log.warning("%s call failed: %s: %s", self._binary, type(e).__name__, e)
+            return LLMCallResult(status="not_analyzed", reason="llm_failed")
+
+
+class OpenAICompatProvider:
+    """Any OpenAI-compatible `/chat/completions` endpoint (Gemini API, OpenAI, LM Studio, vLLM…).
+
+    `base_url` includes the version prefix, e.g. https://api.openai.com/v1 or
+    https://generativelanguage.googleapis.com/v1beta/openai.
+    """
+
+    def __init__(self, model: str, base_url: str, api_key: str | None = None, timeout: int = 600) -> None:
+        if not model or not base_url:
+            raise TypeError("OpenAICompatProvider requires both a model and a base URL.")
+        self.provider_id = f"openai-compat:{model}"
+        self._model = model
+        self._base_url = base_url.rstrip("/")
+        self._api_key = api_key
+        self._timeout = timeout
+
+    def complete(self, prompt: StructuredPrompt, schema: type[Any]) -> LLMCallResult[Any]:
+        # json_object (not json_schema): the widest support across compatible servers.
+        body = {
+            "model": self._model,
+            "messages": [{"role": "user", "content": _full_prompt(prompt, schema)}],
+            "temperature": 0,
+            "response_format": {"type": "json_object"},
+        }
+        headers = {"Content-Type": "application/json"}
+        if self._api_key:
+            headers["Authorization"] = f"Bearer {self._api_key}"
+        raw_text = ""
+        try:
+            req = urllib.request.Request(
+                f"{self._base_url}/chat/completions",
+                data=json.dumps(body).encode(),
+                headers=headers,
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+                raw_text = json.loads(resp.read())["choices"][0]["message"]["content"]
+            value = _CONVERTER.structure(_loads_unfenced(raw_text), schema)
+            return LLMCallResult(status="ok", value=value)
+        except urllib.error.HTTPError as e:
+            _log.warning("OpenAI-compat HTTP %s model=%s: %s (check URL, key and model name)",
+                         e.code, self._model, e.reason)
+            return LLMCallResult(status="not_analyzed", reason="llm_failed")
+        except (json.JSONDecodeError, cattrs.errors.ClassValidationError) as e:
+            _log.warning("OpenAI-compat response rejected model=%s schema=%s: %s\nresponse head: %.400s",
+                         self._model, schema.__name__, e, raw_text)
+            return LLMCallResult(status="not_analyzed", reason="llm_failed")
+        except Exception as e:  # noqa: BLE001
+            _log.warning("OpenAI-compat call failed model=%s: %s: %s", self._model, type(e).__name__, e)
+            return LLMCallResult(status="not_analyzed", reason="llm_failed")
+
+
 class DisabledProvider:
     """No-op provider — always returns not_analyzed: llm_disabled (Décidé Q95).
 

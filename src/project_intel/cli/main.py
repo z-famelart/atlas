@@ -21,7 +21,14 @@ from ..facts.refs import ConfigRef
 from ..facts.store import SCHEMA_VERSION, FactStore
 from ..hotspots.weights import HotspotWeights
 from ..html_report import generate_report as _generate_report
-from ..llm.providers import ClaudeCodeProvider, DisabledProvider, LlamaCppProvider, OllamaProvider
+from ..llm.providers import (
+    ClaudeCodeProvider,
+    DisabledProvider,
+    GeminiCliProvider,
+    LlamaCppProvider,
+    OllamaProvider,
+    OpenAICompatProvider,
+)
 from .registry import STAGE_REGISTRY
 from .types import PipelineContext, StageRunResult
 
@@ -273,7 +280,7 @@ def main() -> None:
               help="TOML project config file. Auto-discovers .atlas.toml in PATH if omitted.")
 @click.option("--no-llm", is_flag=True, default=False, help="Disable LLM stages.")
 @click.option("--llm-provider", default=None, show_default=True,
-              type=click.Choice(["llama-cpp", "ollama", "claude-code"]),
+              type=click.Choice(["llama-cpp", "ollama", "claude-code", "agy", "gemini-cli", "openai-compat"]),
               help="LLM backend (overrides config).")
 @click.option("--llama-cpp-url", default="http://localhost:8080", show_default=True, envvar="LLAMA_CPP_URL",
               help="Base URL of the llama-server (llama.cpp) instance.")
@@ -283,6 +290,14 @@ def main() -> None:
               help="Base URL of the Ollama server.")
 @click.option("--claude-model", default="claude-haiku-4-5-20251001", show_default=True, envvar="CLAUDE_MODEL",
               help="Claude model ID when --llm-provider=claude-code.")
+@click.option("--llm-model", default=None, envvar="LLM_MODEL",
+              help="Model name for --llm-provider=agy/gemini-cli (optional; see `agy models`) or openai-compat (required).")
+@click.option("--llm-url", default=None, envvar="LLM_URL",
+              help="Base URL (with version prefix) for --llm-provider=openai-compat, "
+                   "e.g. https://generativelanguage.googleapis.com/v1beta/openai.")
+@click.option("--llm-api-key", default=None, envvar="LLM_API_KEY",
+              help="API key for openai-compat. Prefer the $LLM_API_KEY env var over the flag "
+                   "(shell history).")
 @click.option("--only", "only_stages", multiple=True, metavar="STAGE",
               help="Run only this stage (repeatable). E.g. --only git --only hotspots.")
 @click.option("-v", "--verbose", "verbosity", count=True,
@@ -298,6 +313,9 @@ def analyze(
     ollama_model: str | None,
     ollama_url: str,
     claude_model: str,
+    llm_model: str | None,
+    llm_url: str | None,
+    llm_api_key: str | None,
     only_stages: tuple[str, ...],
     verbosity: int,
     debug_flag: bool,
@@ -355,6 +373,19 @@ def analyze(
         llm_provider_obj = ClaudeCodeProvider(model=claude_model)
     elif llm_provider == "llama-cpp":
         llm_provider_obj = LlamaCppProvider(model=ollama_model, base_url=llama_cpp_url)
+    elif llm_provider in ("agy", "gemini-cli"):
+        llm_provider_obj = GeminiCliProvider(
+            model=llm_model or ollama_model, binary="gemini" if llm_provider == "gemini-cli" else "agy"
+        )
+    elif llm_provider == "openai-compat":
+        llm_model = llm_model or ollama_model
+        llm_url = llm_url or llm_cfg.get("url")
+        if not (llm_model and llm_url):
+            raise click.ClickException(
+                "openai-compat needs --llm-url and --llm-model "
+                "(or $LLM_URL / $LLM_MODEL, or [llm] url/model in .atlas.toml)."
+            )
+        llm_provider_obj = OpenAICompatProvider(model=llm_model, base_url=llm_url, api_key=llm_api_key)
     else:
         # ollama
         if not ollama_model:

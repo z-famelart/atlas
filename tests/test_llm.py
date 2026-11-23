@@ -422,7 +422,12 @@ def test_schema_description_lists_fields():
 import urllib.error
 import urllib.request as _urllib_request
 
-from project_intel.llm import LlamaCppProvider, OllamaProvider
+from project_intel.llm import (
+    GeminiCliProvider,
+    LlamaCppProvider,
+    OllamaProvider,
+    OpenAICompatProvider,
+)
 from project_intel.llm.providers import suggest_ollama_budget as _suggest
 
 
@@ -704,3 +709,73 @@ def test_llama_cpp_provider_http_error_is_llm_failed(monkeypatch):
     monkeypatch.setattr(_urllib_request, "urlopen", _boom)
     assert provider.complete(_prompt(), _OllamaResult).reason == "llm_failed"
 
+
+def _fake_gemini(monkeypatch, stdout: str, returncode: int = 0):
+    import subprocess
+    seen = {}
+
+    def _run(cmd, **kw):
+        seen["cmd"] = cmd
+
+        class _R:
+            pass
+
+        r = _R()
+        r.returncode, r.stdout, r.stderr = returncode, stdout, "boom"
+        return r
+
+    monkeypatch.setattr(subprocess, "run", _run)
+    return seen
+
+
+def test_gemini_cli_provider_strips_json_fences(monkeypatch):
+    seen = _fake_gemini(monkeypatch, '```json\n{"name": "hi", "confidence": 0.5, "fact_ids": []}\n```')
+    result = GeminiCliProvider(model="gemini-2.5-flash").complete(_prompt(), _SimpleResult)
+    assert result.status == "ok" and result.value.name == "hi"
+    assert seen["cmd"][0] == "agy" and seen["cmd"][-2:] == ["--model", "gemini-2.5-flash"]
+    assert "<content>" in seen["cmd"][2]
+    assert GeminiCliProvider(binary="gemini").provider_id == "gemini:default"
+
+
+def test_gemini_cli_provider_failure_is_llm_failed(monkeypatch):
+    _fake_gemini(monkeypatch, "", returncode=1)
+    assert GeminiCliProvider().complete(_prompt(), _SimpleResult).reason == "llm_failed"
+
+
+def test_gemini_cli_provider_missing_binary_is_llm_failed(monkeypatch):
+    import subprocess
+
+    def _nope(*a, **kw):
+        raise FileNotFoundError("gemini")
+
+    monkeypatch.setattr(subprocess, "run", _nope)
+    assert GeminiCliProvider().complete(_prompt(), _SimpleResult).reason == "llm_failed"
+
+
+def test_openai_compat_provider_sends_key_and_parses(monkeypatch):
+    sent = {}
+
+    def _urlopen(req, *a, **kw):
+        sent["url"], sent["auth"] = req.full_url, req.get_header("Authorization")
+        content = '```json\n{"name": "hello", "confidence": 0.9, "fact_ids": []}\n```'
+        return _make_ollama_http_response({"choices": [{"message": {"content": content}}]})
+
+    monkeypatch.setattr(_urllib_request, "urlopen", _urlopen)
+    provider = OpenAICompatProvider(model="m", base_url="https://x.test/v1/", api_key="k")
+    result = provider.complete(_prompt(), _SimpleResult)
+    assert result.status == "ok" and result.value.name == "hello"
+    assert sent == {"url": "https://x.test/v1/chat/completions", "auth": "Bearer k"}
+
+
+def test_openai_compat_provider_http_error_is_llm_failed(monkeypatch):
+    def _boom(*a, **kw):
+        raise _make_http_error(401, {})
+
+    monkeypatch.setattr(_urllib_request, "urlopen", _boom)
+    provider = OpenAICompatProvider(model="m", base_url="https://x.test/v1")
+    assert provider.complete(_prompt(), _SimpleResult).reason == "llm_failed"
+
+
+def test_openai_compat_requires_model_and_url():
+    with pytest.raises(TypeError):
+        OpenAICompatProvider(model="", base_url="https://x.test/v1")
